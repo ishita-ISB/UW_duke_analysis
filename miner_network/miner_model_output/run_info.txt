@@ -1,0 +1,28 @@
+Python 3.9.13
+
+Dependencies:
+-------------
+
+numpy: 1.21.6
+scipy: 1.9.1
+pandas: 1.9.1
+sklearn: 1.0.2
+lifelines: 0.27.4
+matplotlib: 3.5.2
+seaborn: 0.11.2
+
+
+# minimum number of genes that form an acceptable coexpression cluster:
+minNumberGenes = 6 #bulk RNAseq default=6;single cell RNAseq default=6
+
+# minimum correlation coefficient for an acceptable regulator-cluster association 
+minCorrelation = 0.1 #bulk RNAseq default=0.2;single cell RNAseq default=0.05
+
+# minimum number of genes that form an acceptable coexpression cluster and have share binding site for regulator:
+minNumberRegulonGenes = 4 #bulk RNAseq default=5;single cell RNAseq default=4
+
+# choose database: if supplying your own database, use mechanistic_database = reference_mechanistic_database
+mechanistic_database = "tfbsdb_tf_to_genes.pkl" #default option
+
+# number of cores available for multiprocessing
+numCores = 12
