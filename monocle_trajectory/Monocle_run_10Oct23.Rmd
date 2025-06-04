@@ -1,0 +1,599 @@
+---
+title: "Monocle Analysis 1 (12 Oct 2023)"
+output: html_notebook
+---
+
+UW14 and UW14R integrated data was analyzed in Monocle.
+
+
+```{r}
+#Base libraries
+
+#options(bitmapType = "cairo")
+library(Matrix)
+library(monocle3)
+#library(monocle)
+library(dplyr)
+library(tidyr)
+library(Seurat)
+library(ggplot2)
+library(reshape)
+
+```
+cell_data_set class
+
+The class requires three input files:
+
+    -expression_matrix, a numeric matrix of expression values, where rows are genes, and columns are cells
+    -cell_metadata, a data frame, where rows are cells, and columns are cell attributes (such as cell type, culture condition, day captured, etc.)
+    -gene_metadata, an data frame, where rows are features (e.g. genes), and columns are gene attributes, such as biotype, gc content, etc.
+
+The expression value matrix must:
+
+    -have the same number of columns as the cell_metadata has rows.
+    -have the same number of rows as the gene_metadata has rows.
+
+Additionally:
+
+    -row names of the cell_metadata object should match the column names of the expression matrix.
+    -row names of the gene_metadata object should match row names of the expression matrix.
+    -one of the columns of the gene_metadata should be named "gene_short_name", which represents the gene symbol or simple name (generally used for plotting) for each gene.
+
+
+```{r}
+#Read integrated data, prep format files
+
+gbm_uw14PR <- readRDS("GBMintegrated_revM_uw14PriRel.rds")
+
+gbm_uw14pr_gene <- as.data.frame(rownames(GetAssayData(object = gbm_uw14PR, slot = "counts")))
+colnames(gbm_uw14pr_gene) <- c("gene_short_name")
+rownames(gbm_uw14pr_gene) <- gbm_uw14pr_gene$gene_short_name
+
+```
+
+
+```{r}
+
+cds <- new_cell_data_set(GetAssayData(object = gbm_uw14PR, slot = "counts"),
+cell_metadata = gbm_uw14PR@meta.data,
+gene_metadata = gbm_uw14pr_gene)
+
+
+
+
+```
+
+#normalize the data, using Principal Components Analysis (the standard for RNA-seq) or Latent Semantic Indexing (common in ATAC-seq), here PCA is used
+#Dimensionality reduction by Umap or tSNE , UMAP is default
+#Grouping cells into clusters is an important step in identifying the cell types represented in your data. Monocle uses a technique called community detection to group cells. This approach was introduced by Levine et al as part of the phenoGraph algorithm. 
+
+
+
+```{r}
+
+## Step 1: Normalize and pre-process the data
+cds <- preprocess_cds(cds, num_dim = 50)
+
+## Step 2: Remove batch effects with cell alignment
+cds <- align_cds(cds, alignment_group = "GROUP_time")
+
+## Step 3: Reduce the dimensions using UMAP
+cds <- reduce_dimension(cds)
+
+plot_cells(cds, label_groups_by_cluster=FALSE,  color_cells_by = "Celltype") + theme(text= element_text(size = 14), legend.position = "bottom", legend.text = element_text(size = 8))
+
+plot_cells(cds, label_groups_by_cluster=FALSE,  color_cells_by = "GROUP_time") + theme(text= element_text(size = 14), legend.position = "bottom", legend.text = element_text(size = 8))
+
+## Step 4: Cluster the cells
+cds <- cluster_cells(cds) #, resolution = 1e-5 ?
+plot_cells(cds, color_cells_by = "partition")
+
+## Step 5: Learn a graph
+cds <- learn_graph(cds)
+
+plot_cells(cds, color_cells_by = "Celltype",label_groups_by_cluster=FALSE, label_leaves=FALSE,label_branch_points=FALSE) + theme(legend.position = "bottom")
+
+plot_cells(cds, color_cells_by = "State",label_groups_by_cluster=FALSE, label_leaves=FALSE,label_branch_points=FALSE) + theme(legend.position = "bottom")
+
+st_cols <- c("St_1" = "pink", "St_9" = "lightblue", "St_5" = "lightgreen", "St_16" = "orange")
+plot_cells(cds, color_cells_by = "State",label_groups_by_cluster=FALSE, label_leaves=FALSE,label_branch_points=FALSE) + theme(legend.position = "bottom") + scale_color_manual(values = st_cols)
+
+```
+
+
+```{r}
+plot_cells(cds, label_groups_by_cluster=FALSE,  color_cells_by = "GROUP_time") + theme(text= element_text(size = 14), legend.position = "bottom", legend.text = element_text(size = 8))
+```
+
+
+
+```{r}
+plot_cells(cds, color_cells_by = "Celltype",label_groups_by_cluster=FALSE, label_leaves=FALSE,label_branch_points=FALSE) + theme(legend.position = "bottom")
+```
+
+
+```{r}
+plot_cells(cds, color_cells_by = "State",label_groups_by_cluster=FALSE, label_leaves=FALSE,label_branch_points=FALSE) + theme(legend.position = "bottom")
+
+```
+
+```{r}
+plot_cells(cds, color_cells_by = "State",label_groups_by_cluster=FALSE, label_cell_groups = FALSE, label_leaves=FALSE,label_branch_points=FALSE) + theme(legend.position = "bottom") + scale_color_manual(values = st_cols)
+```
+
+
+```{r}
+## Step 6: Order cells
+cds <- order_cells(cds)
+
+```
+
+
+```{r}
+##  Perform differential expression analysis
+
+#Regression analysis 
+#gene_fits_cond <- fit_models(cds, model_formula_str = "~GROUP_time")
+
+mTF_gene <- c("SOX9","SOX2","MEOX2","JUN","POU3F2","FOXJ3")
+cds_subset <- cds[rowData(cds)$gene_short_name %in% mTF_gene,]
+gene_fits_cond_sub <- fit_models(cds_subset, model_formula_str = "~GROUP_time")
+#gene_fits_cond <- fit_models(cds, model_formula_str = "~GROUP_time")
+
+#fit_coefs2 <- coefficient_table(gene_fits_cond)
+
+fit_coefs2s <- coefficient_table(gene_fits_cond_sub)
+grp_time_terms <- fit_coefs2s %>% filter(term == "GROUP_timeRelapse")
+
+grp_time_terms %>% filter (q_value < 0.05) %>% select(gene_short_name, term, q_value, estimate)
+```
+
+
+```{r}
+grp_time_terms %>% filter (q_value < 0.05) %>% select(gene_short_name, term, q_value, estimate)
+
+```
+
+```{r}
+monocle3::plot_genes_violin(cds_subset, group_cells_by="GROUP_time", ncol=2) + theme(axis.text.x=element_text(angle=45, hjust=1))
+
+```
+
+
+```{r}
+
+monocle3::plot_genes_violin(cds_subset, group_cells_by="Celltype", ncol=2) + theme(axis.text.x=element_text(angle=45, hjust=1))
+
+```
+
+
+
+```{r}
+
+monocle3::plot_genes_violin(cds_subset, group_cells_by="State", ncol=2) + theme(axis.text.x=element_text(angle=45, hjust=1))
+
+```
+
+
+```{r}
+#Graph-autocorrelation analysis for comparing clusters
+cds_pr_test_res <- graph_test(cds, neighbor_graph="principal_graph", cores=4)
+pr_deg_ids <- row.names(subset(pr_graph_test_res, q_value < 0.05))
+
+#Finding modules of co-regulated genes
+##gene_module_df <- find_gene_modules(neurons_cds[pr_deg_ids,], resolution=1e-2)
+
+gene_module_df <- find_gene_modules(cds[pr_deg_ids,], resolution=c(10^seq(-6,-1)))
+
+cell_group_df <- tibble::tibble(cell=row.names(colData(cds)),cell_group=colData(cds)$State)
+cell_group_df <- tibble::tibble(cell=row.names(colData(cds)),cell_group=colData(cds)$GROUP_time)
+cell_group_df <- tibble::tibble(cell=row.names(colData(cds)),cell_group=colData(cds)$Celltype)
+
+agg_mat <- aggregate_gene_expression(cds, gene_module_df, cell_group_df)
+row.names(agg_mat) <- stringr::str_c("Module ", row.names(agg_mat))
+pheatmap::pheatmap(agg_mat,scale="column", clustering_method="ward.D2")
+
+```
+
+
+```{r}
+pheatmap::pheatmap(agg_mat,scale="column", clustering_method="ward.D2")
+```
+
+
+```{r}
+
+plot_cells(cds, genes=gene_module_df %>% filter(module %in% c(50, 21, 17, 19)),label_cell_groups=FALSE,show_trajectory_graph=FALSE)
+
+```
+
+
+
+```{r}
+plot_cells(cds, genes=gene_module_df %>% filter(module %in% c(1,19,22,38,5,17,41,21,50)),label_cell_groups=FALSE, show_trajectory_graph=FALSE) + theme(text = element_text(size = 18))
+           
+           
+```
+
+
+
+```{r}
+plot_cells(cds, genes=gene_module_df %>% filter(module %in% c(39,12,24,28,2,3,36)), label_cell_groups=FALSE, show_trajectory_graph=FALSE) + theme(text = element_text(size = 18))
+
+```
+
+
+```{r}
+dri_g_vel <- c("FOXO3")
+cds_sub_st9_1_mcV <- cds[rowData(cds)$gene_short_name %in% dri_g_vel, colData(cds)$State %in% c("St_9","St_1")]
+
+cds_sub_st9_1_mcV <- order_cells(cds_sub_st9_1_mcV)
+monocle3::plot_genes_in_pseudotime(cds_sub_st9_1_mcV, color_cells_by="GROUP_time", min_expr=0.5)
+
+monocle3::plot_genes_violin(cds_sub_st9_1_mcV, group_cells_by="GROUP_time", ncol=2) + theme(axis.text.x=element_text(angle=45, hjust=1))
+
+
+```
+
+
+```{r}
+
+dri_g_vel <- c("ETV6","FOXO3","KLF12","NF1","NRF1","PBX1","POU2F1","RFX3","SOX5")
+cds_tr_st9_1_mcV <- cds_sub_tr[rowData(cds_sub_tr)$gene_short_name %in% dri_g_vel, colData(cds_sub_tr)$State %in% c("St_9","St_1")]
+
+cds_tr_st9_1_mcV <- order_cells(cds_tr_st9_1_mcV)
+monocle3::plot_genes_in_pseudotime(cds_tr_st9_1_mcV, color_cells_by="GROUP_time", min_expr=0.5)
+
+monocle3::plot_genes_violin(cds_tr_st9_1_mcV, group_cells_by="GROUP_time", ncol=2) + theme(axis.text.x=element_text(angle=45, hjust=1))
+
+
+
+
+
+
+```
+
+
+```{r}
+N_cds_sub <- cds[rowData(cds)$gene_short_name %in% mTF_gene, colData(cds)$Celltype %in% c("Cancer cell (Neuron)")] N_cds_sub <- order_cells(N_cds_sub) 
+plot_genes_in_pseudotime(N_cds_sub, color_cells_by="GROUP_time", min_expr=0.5)
+
+```
+
+
+```{r}
+monocle3::plot_genes_in_pseudotime(N_cds_sub, color_cells_by="GROUP_time", min_expr=0.5)
+
+```
+
+
+```{r}
+dGSC_cds_sub <- cds[rowData(cds)$gene_short_name %in% mTF_gene, colData(cds)$Celltype %in% c("Developmental GSC (Cancer)")]
+
+dGSC_cds_sub <- order_cells(dGSC_cds_sub)
+plot_genes_in_pseudotime(dGSC_cds_sub, color_cells_by="GROUP_time", min_expr=0.5) + theme(text = element_text(size = 16))
+
+```
+
+
+```{r}
+monocle3::plot_genes_in_pseudotime(dGSC_cds_sub, color_cells_by="GROUP_time", min_expr=0.5) + theme(text = element_text(size = 16))
+
+```
+
+
+```{r}
+GC_cds_sub <- cds[rowData(cds)$gene_short_name %in% mTF_gene, colData(cds)$Celltype %in% c("Germ cell-like")]
+GC_cds_sub <- order_cells(GC_cds_sub)
+plot_genes_in_pseudotime(GC_cds_sub, color_cells_by="GROUP_time", min_expr=0.5) + theme(text = element_text(size = 16))
+
+```
+
+
+```{r}
+monocle3::plot_genes_in_pseudotime(GC_cds_sub, color_cells_by="GROUP_time", min_expr=0.5) + theme(text = element_text(size = 16))
+```
+
+```{r}
+
+SC_cds_sub <- cds[rowData(cds)$gene_short_name %in% mTF_gene, colData(cds)$Celltype %in% c("Stem cell (cancer cell)")]
+SC_cds_sub <- order_cells(SC_cds_sub)
+plot_genes_in_pseudotime(SC_cds_sub, color_cells_by="GROUP_time", min_expr=0.5) + theme(text = element_text(size = 16))
+
+```
+
+
+```{r}
+monocle3::plot_genes_in_pseudotime(SC_cds_sub, color_cells_by="GROUP_time", min_expr=0.5) + theme(text = element_text(size = 16))
+
+```
+Exploring sets of TF and target genes considering MINER regulons and Monocle modules
+
+```{r}
+##Preprocess MINER regulons 
+
+regulons_inf <- read.csv("/mnt/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/miner_network_results_1/regulonDF.csv", header = TRUE, sep = ",", row.names = 1)
+
+id_map <- read.table("/mnt/omics4tb2/ishitaM/softwares/miner3/miner/data/identifiers_Genes.txt", sep = "\t", header = T)
+comk <- merge(regulons_inf, id_map, by.x = "Regulator", by.y = "Ensembl_Id")
+comk2 <- merge(comk, id_map, by.x = "Gene", by.y = "Ensembl_Id")
+
+regulon_details <- comk2 %>% select(c(Gene,Regulator,Regulon_ID,Gene.Name.x, Gene.Name.y))
+colnames(regulon_details) <- c("Gene","Regulator","Regulon_ID","Regulator_ID","Gene_ID")
+
+
+```
+
+
+
+```{r}
+## Co-regulated modules Monocle
+
+cds_pr_res <- graph_test(cds, neighbor_graph="principal_graph", cores=4)
+pr_deg_ids_all <- row.names(subset(cds_pr_res, q_value < 0.000000005))
+
+gene_module_df_all <- find_gene_modules(cds[pr_deg_ids_all,], resolution=c(10^seq(-6,-1)))
+cell_group_df_all <- tibble::tibble(cell=row.names(colData(cds)), cell_group=colData(cds)$State)
+agg_mat_all <- aggregate_gene_expression(cds, gene_module_df_all, cell_group_df_all)
+agg_mat_allT <- melt(agg_mat_all)
+colnames(agg_mat_allT) <- c("Module","State","AggExp")
+
+
+```
+
+
+```{r}
+
+##Compare St1 and St9
+aggE_St1low <- agg_mat_allT %>% filter(State == "St_1") %>% filter(AggExp < 0)
+aggE_St9high <- agg_mat_allT %>% filter(State == "St_9") %>% filter(AggExp > 0)
+mod_st1Lst9H <- intersect(aggE_St1low$Module, aggE_St9high$Module)
+
+aggE_St1high <- agg_mat_allT %>% filter(State == "St_1") %>% filter(AggExp > 0)
+aggE_St9low <- agg_mat_allT %>% filter(State == "St_9") %>% filter(AggExp < 0)
+mod_st9Lst1H <- sort(intersect(aggE_St9low$Module, aggE_St1high$Module))
+
+
+mod_st1Lst9H_gene <- gene_module_df_all %>% filter( module %in% mod_st1Lst9H)
+mod_st9Lst1H_gene <- gene_module_df_all %>% filter( module %in% mod_st9Lst1H)
+
+mod_st1Lst9H_regulon <- regulon_details %>% filter(Regulator_ID %in% mod_st1Lst9H_gene$id)
+mod_st9Lst1H_regulon <- regulon_details %>% filter(Regulator_ID %in% mod_st9Lst1H_gene$id)
+
+unique(mod_st1Lst9H_regulon$Regulator_ID)
+
+unique(mod_st9Lst1H_regulon$Regulator_ID)
+
+RegL_st1Lst9H <-unique(mod_st1Lst9H_regulon$Regulator_ID)
+RegL_st9Lst1H <- unique(mod_st9Lst1H_regulon$Regulator_ID)
+
+```
+
+
+```{r}
+
+##Calculate TF-regulon significance
+Combi_st1Lat9H_modReg <- data.frame(stringsAsFactors = F)
+for(i in 1:length(RegL_st1Lst9H)){ #print(RegL_st1Lst9H[i])}
+
+ TF_regSig <- regulon_details %>% filter(Regulator_ID == RegL_st1Lst9H[i])
+#sox9_regSig <- regulon_details %>% filter(Regulator_ID == "SOX9")
+ 
+#sox9_regSig_genL <- unique(sox9_regSig$Gene_ID)
+ TF_regSig_genL <- unique(TF_regSig$Gene_ID)
+#sox9_regSig_genL <- append(sox9_regSig_genL, "SOX9")
+ TF_regSig_genL <- append(TF_regSig_genL, RegL_st1Lst9H[i])
+
+#cds_sub_sox9 <- cds[rowData(cds)$gene_short_name %in% sox9_regSig_genL,]
+cds_sub_TF <- cds[rowData(cds)$gene_short_name %in% TF_regSig_genL,]
+
+#gene_fits_sox9 <- fit_models(cds_sub_sox9, model_formula_str = "~GROUP_time")
+gene_fits_TF <- fit_models(cds_sub_TF, model_formula_str = "~GROUP_time")
+
+#fit_coefs_sox9 <- coefficient_table(gene_fits_sox9)
+fit_coefs_TF <- coefficient_table(gene_fits_TF)
+
+#sox9_regmodGV <- fit_coefs_sox9 %>% filter(term == "GROUP_timeRelapse") %>% filter (q_value < 0.05) %>% select(gene_short_name, term, q_value, estimate)
+
+TF_regmodGV <- fit_coefs_TF %>% filter(term == "GROUP_timeRelapse") %>% filter (q_value < 0.05) %>% select(gene_short_name, term, q_value, estimate)
+
+
+#length(intersect(unique(mod_st1Lst9H_gene$id), unique(sox9_regmodGV$gene_short_name)))
+matc_st1Lst9H_TF <- length(intersect(unique(mod_st1Lst9H_gene$id), unique(TF_regmodGV$gene_short_name)))
+
+#length(unique(sox9_regmodGV$gene_short_name))
+regVg_TF <- length(unique(TF_regmodGV$gene_short_name))
+
+#length(unique(mod_st1Lst9H_gene$id))
+modGL <- length(unique(mod_st1Lst9H_gene$id))
+
+uniBk <-length(unique(gene_module_df_all$id))
+#phyper(q = 31, m = 58, n = 7512, k = 1556, lower.tail = FALSE )
+inte = matc_st1Lst9H_TF -1
+overA = uniBk - regVg_TF  
+
+phy_sigTF <- phyper(q = inte, m = regVg_TF, n = overA, k = modGL, lower.tail = FALSE )
+#length(unique(TF_regmodGV$gene_short_name))/length(TF_regSig_genL)
+gene_rat_TF <- length(unique(TF_regmodGV$gene_short_name))/length(TF_regSig_genL)
+
+TF_reg_par <- cbind(RegL_st1Lst9H[i], gene_rat_TF, regVg_TF, phy_sigTF)
+colnames(TF_reg_par) <- c("TFmon","Gene ratio regulon","Varying genes", "Hper sig")
+Combi_st1Lat9H_modReg <- rbind(Combi_st1Lat9H_modReg, TF_reg_par)
+
+}
+```
+
+
+
+```{r}
+##Calculate TF-regulon significance
+
+Combi_st9Lst1H_modReg <- data.frame(stringsAsFactors = F)
+for(i in 1:length(RegL_st9Lst1H)){ #print(RegL_st1Lst9H[i])}
+
+ TF_regSig <- regulon_details %>% filter(Regulator_ID == RegL_st9Lst1H[i])
+
+ TF_regSig_genL <- unique(TF_regSig$Gene_ID)
+
+ TF_regSig_genL <- append(TF_regSig_genL, RegL_st9Lst1H[i])
+
+
+cds_sub_TF <- cds[rowData(cds)$gene_short_name %in% TF_regSig_genL,]
+gene_fits_TF <- fit_models(cds_sub_TF, model_formula_str = "~GROUP_time")
+fit_coefs_TF <- coefficient_table(gene_fits_TF)
+TF_regmodGV <- fit_coefs_TF %>% filter(term == "GROUP_timeRelapse") %>% filter (q_value < 0.05) %>% select(gene_short_name, term, q_value, estimate)
+matc_st9Lst1H_TF <- length(intersect(unique(mod_st9Lst1H_gene$id), unique(TF_regmodGV$gene_short_name)))
+regVg_TF <- length(unique(TF_regmodGV$gene_short_name))
+modGL <- length(unique(mod_st9Lst1H_gene$id))
+uniBk <-length(unique(gene_module_df_all$id))
+inte = matc_st9Lst1H_TF -1
+overA = uniBk - regVg_TF  
+
+phy_sigTF <- phyper(q = inte, m = regVg_TF, n = overA, k = modGL, lower.tail = FALSE )
+gene_rat_TF <- length(unique(TF_regmodGV$gene_short_name))/length(TF_regSig_genL)
+
+TF_reg_par <- cbind(RegL_st9Lst1H[i], gene_rat_TF, regVg_TF, phy_sigTF)
+colnames(TF_reg_par) <- c("TFmon","Gene ratio regulon","Varying genes", "Hper sig")
+Combi_st9Lst1H_modReg <- rbind(Combi_st9Lst1H_modReg, TF_reg_par)
+
+}
+
+```
+
+
+
+```{r}
+
+##Calculate TF-regulon significance
+Combi_st1Lat9H_modReg2 <- data.frame(stringsAsFactors = F)
+for(i in 1:length(RegL_st1Lst9H)){ #print(RegL_st1Lst9H[i])}
+
+ TF_regSig <- regulon_details %>% filter(Regulator_ID == RegL_st1Lst9H[i])
+#sox9_regSig <- regulon_details %>% filter(Regulator_ID == "SOX9")
+ 
+#sox9_regSig_genL <- unique(sox9_regSig$Gene_ID)
+ TF_regSig_genL <- unique(TF_regSig$Gene_ID)
+#sox9_regSig_genL <- append(sox9_regSig_genL, "SOX9")
+ TF_regSig_genL <- append(TF_regSig_genL, RegL_st1Lst9H[i])
+
+#cds_sub_sox9 <- cds[rowData(cds)$gene_short_name %in% sox9_regSig_genL,]
+cds_sub_TF2 <- cds[rowData(cds)$gene_short_name %in% TF_regSig_genL, colData(cds)$State %in% c("St_9","St_1")]
+
+#gene_fits_sox9 <- fit_models(cds_sub_sox9, model_formula_str = "~GROUP_time")
+gene_fits_TF2 <- fit_models(cds_sub_TF2, model_formula_str = "~GROUP_time")
+
+#fit_coefs_sox9 <- coefficient_table(gene_fits_sox9)
+fit_coefs_TF2 <- coefficient_table(gene_fits_TF2)
+
+#sox9_regmodGV <- fit_coefs_sox9 %>% filter(term == "GROUP_timeRelapse") %>% filter (q_value < 0.05) %>% select(gene_short_name, term, q_value, estimate)
+
+TF_regmodGV2 <- fit_coefs_TF2 %>% filter(term == "GROUP_timeRelapse") %>% filter (q_value < 0.05) %>% select(gene_short_name, term, q_value, estimate)
+
+
+#length(intersect(unique(mod_st1Lst9H_gene$id), unique(sox9_regmodGV$gene_short_name)))
+matc_st1Lst9H_TF2 <- length(intersect(unique(mod_st1Lst9H_gene$id), unique(TF_regmodGV2$gene_short_name)))
+
+#length(unique(sox9_regmodGV$gene_short_name))
+regVg_TF2 <- length(unique(TF_regmodGV2$gene_short_name))
+
+#length(unique(mod_st1Lst9H_gene$id))
+modGL2 <- length(unique(mod_st1Lst9H_gene$id))
+
+uniBk2 <-length(unique(gene_module_df_all$id))
+#phyper(q = 31, m = 58, n = 7512, k = 1556, lower.tail = FALSE )
+inte = matc_st1Lst9H_TF -1
+overA = uniBk2 - regVg_TF2  
+
+phy_sigTF <- phyper(q = inte, m = regVg_TF2, n = overA, k = modGL2, lower.tail = FALSE )
+#length(unique(TF_regmodGV$gene_short_name))/length(TF_regSig_genL)
+gene_rat_TF <- length(unique(TF_regmodGV2$gene_short_name))/length(TF_regSig_genL)
+
+TF_reg_par2 <- cbind(RegL_st1Lst9H[i], gene_rat_TF, regVg_TF2, phy_sigTF)
+colnames(TF_reg_par2) <- c("TFmon","Gene ratio regulon","Varying genes", "Hper sig")
+Combi_st1Lat9H_modReg2 <- rbind(Combi_st1Lat9H_modReg2, TF_reg_par2)
+
+}
+
+
+
+
+```
+
+
+
+```{r}
+
+##Calculate TF-regulon significance
+
+Combi_st9Lst1H_modReg3 <- data.frame(stringsAsFactors = F)
+for(i in 1:length(RegL_st9Lst1H)){ #print(RegL_st1Lst9H[i])}
+
+ TF_regSig <- regulon_details %>% filter(Regulator_ID == RegL_st9Lst1H[i])
+
+ TF_regSig_genL <- unique(TF_regSig$Gene_ID)
+
+ TF_regSig_genL <- append(TF_regSig_genL, RegL_st9Lst1H[i])
+
+
+cds_sub_TF3 <- cds[rowData(cds)$gene_short_name %in% TF_regSig_genL,]
+gene_fits_TF3 <- fit_models(cds_sub_TF3, model_formula_str = "~GROUP_time")
+fit_coefs_TF3 <- coefficient_table(gene_fits_TF3)
+TF_regmodGV3 <- fit_coefs_TF3 %>% filter(term == "GROUP_timeRelapse") %>% filter (q_value < 0.05) %>% select(gene_short_name, term, q_value, estimate)
+matc_st9Lst1H_TF <- length(intersect(unique(mod_st9Lst1H_gene$id), unique(TF_regmodGV3$gene_short_name)))
+regVg_TF <- length(unique(TF_regmodGV3$gene_short_name))
+modGL <- length(unique(mod_st9Lst1H_gene$id))
+uniBk <-length(unique(gene_module_df_all$id))
+inte = matc_st9Lst1H_TF -1
+overA = uniBk - regVg_TF  
+
+phy_sigTF <- phyper(q = inte, m = regVg_TF, n = overA, k = modGL, lower.tail = FALSE )
+gene_rat_TF <- length(unique(TF_regmodGV3$gene_short_name))/length(TF_regSig_genL)
+
+TF_reg_par <- cbind(RegL_st9Lst1H[i], gene_rat_TF, regVg_TF, phy_sigTF)
+colnames(TF_reg_par) <- c("TFmon","Gene ratio regulon","Varying genes", "Hper sig")
+Combi_st9Lst1H_modReg3 <- rbind(Combi_st9Lst1H_modReg3, TF_reg_par)
+
+}
+
+
+```
+
+```{r}
+pbuild_uw <- plot_cells(cds, color_cells_by = "pseudotime", label_cell_groups=T, show_trajectory_graph = F, label_leaves=F, label_branch_points=F, graph_label_size=3, group_label_size = 4, cell_size = 1)
+cds_uw_PDT <- pbuild_uw$data[c('State', 'cell_color')] %>% filter(cell_color != "Inf")%>%arrange(desc(cell_color))
+sum(table(cds_uw_PDT$State))
+ cds_uw_PDT2 <- cds_uw_PDT %>% mutate(pdt_lab = if_else(cell_color < 4, "Early", if_else( cell_color > 12, "Late", "Intermediate")))
+ cds_uw_PT3 <- round((table(cds_uw_PDT2$State, cds_uw_PDT2$pdt_lab)/3350)*100,2)
+ cds_uw_PT3 <- as.data.frame(cds_uw_PT3)
+ colnames(cds_uw_PT3) <- c("State","PDT_lab","Percentage")
+ ggplot(cds_uw_PT3, aes(fill=State, y=Percentage, x=PDT_lab)) + geom_bar(position="stack", stat="identity") + ylim(0,100)+  theme_classic()+ theme(text = element_text(size = 18)) + xlab("Pseudotime")
+
+
+```
+
+
+```{r}
+
+UW_states_PR <- pbuild_uw$data[c('State', 'cell_color','GROUP_time')] %>% filter(cell_color != "Inf")%>%arrange(desc(cell_color))
+tp_bin <- seq(0, 16, by =4)
+#uw_stot <- sum(table(cds_uw_PDT$State))
+
+for(j in 2:length(tp_bin)){
+cell_binT2 <- UW_states_PR %>% filter(cell_color <= tp_bin2[j])
+uw_stot <- sum(table(cell_binT2$State))
+cell_prop <- round((table(cell_binT2$State, cell_binT2$GROUP_time)/uw_stot)*100,2)
+cell_prop <- as.data.frame(cell_prop)
+Pbin_nam <-paste(tp_bin[j-1],"-",tp_bin[j])
+cell_prop$Part <- Pbin_nam
+colnames(cell_prop) <- c("State","Condition","Percentage","PDT")
+cellSt_traj_UW <- rbind(cellSt_traj_UW, cell_prop)
+}
+colnames(cellSt_traj_UW) <- c("State","Condition","Percentage","PDT")
+ggplot(cellSt_traj_UW, aes(fill=State, y=Percentage, x=Condition)) + geom_bar(position="stack", stat="identity") + ylim(0,100)+  theme_classic()+ theme(text = element_text(size = 18) , axis.text.x = element_text(angle = 90)) + xlab("Pseudotime") +  facet_grid(~factor(PDT, levels=c("0 - 3", "3 - 6", "6 - 9", "9 - 12", "12 - 15", "15 - 18", "18 - 21","21 - 24")))
+
+cellSt_traj_UW_dat <- cellSt_traj_UW[2:151,]
+ggplot(cellSt_traj_UW_dat, aes(fill=State, y=Percentage, x=Condition)) + geom_bar(position="stack", stat="identity") + ylim(0,100)+  theme_classic()+ theme(text = element_text(size = 18) , axis.text.x = element_text(angle = 90)) + xlab("Pseudotime") +  facet_grid(~factor(PDT, levels=c("0 - 4", "4 - 8", "8 - 12", "12 - 16"))) + scale_fill_manual(values = st_cols2)
+
+
+```
+

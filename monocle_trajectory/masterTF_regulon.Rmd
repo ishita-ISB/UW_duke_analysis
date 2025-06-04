@@ -1,0 +1,457 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+
+options(bitmapType = "cairo")
+library(monocle3)
+#library(monocle)
+library(dplyr)
+library(tidyr)
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+```{r}
+st1_mtf_reg <- read.table("St_1UW14_masterTF.txt", header = T, sep = "\t")
+st1_mtf_reg_SOX9 <- st1_mtf_reg %>% filter(MasterTF == "SOX9") %>% select(Gene_ID, RegulonID)
+names(st1_mtf_reg_SOX9) <- c("id", "module")
+st1_mtf_reg_SOX9$id <- as.character(st1_mtf_reg_SOX9$id)
+st1_mtf_reg_SOX9t <- as_tibble(st1_mtf_reg_SOX9) 
+st1_mtf_reg_SOX9t$module <- as.factor(st1_mtf_reg_SOX9t$module)
+
+
+plot_cells(cds, genes=st1_mtf_reg_SOX9t,show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.5, label_leaves=FALSE) + theme(text = element_text(size = 20))
+
+```
+
+
+
+
+
+```{r}
+
+st1_mtf_reg_SOX2 <- st1_mtf_reg %>% filter(MasterTF == "SOX2") %>% select(Gene_ID, RegulonID)
+names(st1_mtf_reg_SOX2) <- c("id", "module")
+st1_mtf_reg_SOX2$id <- as.character(st1_mtf_reg_SOX2$id)
+st1_mtf_reg_SOX2t <- as_tibble(st1_mtf_reg_SOX2) 
+st1_mtf_reg_SOX2$module <- as.factor(st1_mtf_reg_SOX2$module)
+
+
+plot_cells(cds, genes=unique(st1_mtf_reg_SOX2t$id),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.5, label_leaves=FALSE) + theme(text = element_text(size = 20))
+
+```
+
+
+```{r}
+
+plot_cells(cds, genes=unique(st1_mtf_reg_POU3F3t$id),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.5, label_leaves=FALSE) + theme(text = element_text(size = 20))
+
+```
+
+
+```{r}
+
+st1_mtf_reg_FOXP1 <- st1_mtf_reg %>% filter(MasterTF == "FOXP1") %>% select(Gene_ID, RegulonID)
+names(st1_mtf_reg_FOXP1) <- c("id", "module")
+st1_mtf_reg_FOXP1$id <- as.character(st1_mtf_reg_FOXP1$id)
+st1_mtf_reg_FOXP1t <- as_tibble(st1_mtf_reg_FOXP1) 
+st1_mtf_reg_FOXP1$module <- as.factor(st1_mtf_reg_FOXP1$module)
+
+
+plot_cells(cds, genes=st1_mtf_reg_FOXP1t,show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("FOXP1 regulons")
+
+
+
+```
+
+
+```{r}
+
+
+st1_mtf_reg_MECOM <- st1_mtf_reg %>% filter(MasterTF == "MECOM") %>% select(Gene_ID, RegulonID)
+names(st1_mtf_reg_MECOM) <- c("id", "module")
+st1_mtf_reg_MECOM$id <- as.character(st1_mtf_reg_MECOM$id)
+st1_mtf_reg_MECOMt <- as_tibble(st1_mtf_reg_MECOM) 
+st1_mtf_reg_MECOMt$module <- as.factor(st1_mtf_reg_MECOMt$module)
+
+
+plot_cells(cds, genes=st1_mtf_reg_MECOMt,show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20))+ ggtitle("MECOM regulons")
+
+
+```
+
+
+
+```{r}
+
+st1_mtf_reg_SOX5 <- miner_net %>% filter(Regulator_ID == "SOX5") %>% select(Gene_ID, Regulon_mID)
+names(st1_mtf_reg_SOX5) <- c("id", "module")
+st1_mtf_reg_SOX5$id <- as.character(st1_mtf_reg_SOX5$id)
+st1_mtf_reg_SOX5t <- as_tibble(st1_mtf_reg_SOX5) 
+st1_mtf_reg_SOX5t$module <- as.factor(st1_mtf_reg_SOX5t$module)
+
+
+plot_cells(cds, genes=st1_mtf_reg_SOX5t,show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) +  ggtitle("SOX5 regulons") + scale_color_gradient(low ="green", high = "red")
+
+```
+
+
+```{r}
+
+st1_mtf_reg_PBX1 <- st1_mtf_reg %>% filter(MasterTF == "PBX1") %>% select(Gene_ID, RegulonID)
+names(st1_mtf_reg_PBX1) <- c("id", "module")
+st1_mtf_reg_PBX1$id <- as.character(st1_mtf_reg_PBX1$id)
+st1_mtf_reg_PBX1t <- as_tibble(st1_mtf_reg_PBX1) 
+st1_mtf_reg_PBX1t$module <- as.factor(st1_mtf_reg_PBX1t$module)
+
+
+plot_cells(cds, genes=unique(st1_mtf_reg_PBX1t$id),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.5, label_leaves=FALSE) + theme(text = element_text(size = 20)) +  ggtitle("PBX1 regulons")
+
+
+
+```
+
+
+```{r}
+
+st1_mtf_reg_SOX8 <- st1_mtf_reg %>% filter(MasterTF == "SOX8") %>% select(Gene_ID, RegulonID)
+names(st1_mtf_reg_SOX8) <- c("id", "module")
+st1_mtf_reg_SOX8$id <- as.character(st1_mtf_reg_SOX8$id)
+st1_mtf_reg_SOX8t <- as_tibble(st1_mtf_reg_SOX8) 
+st1_mtf_reg_SOX8t$module <- as.factor(st1_mtf_reg_SOX8t$module)
+
+
+plot_cells(cds, genes=st1_mtf_reg_SOX8t,show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.5, label_leaves=FALSE) + theme(text = element_text(size = 20))
+
+```
+
+
+
+```{r}
+
+st1_mtf_reg_TRAF4 <- st1_mtf_reg %>% filter(MasterTF == "TRAF4") %>% select(Gene_ID, RegulonID)
+names(st1_mtf_reg_TRAF4) <- c("id", "module")
+st1_mtf_reg_TRAF4$id <- as.character(st1_mtf_reg_TRAF4$id)
+st1_mtf_reg_TRAF4t <- as_tibble(st1_mtf_reg_TRAF4) 
+st1_mtf_reg_TRAF4t$module <- as.factor(st1_mtf_reg_TRAF4t$module)
+
+
+plot_cells(cds, genes=st1_mtf_reg_TRAF4t,show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + theme(text = element_text(size = 20))
+
+
+```
+
+
+
+```{r}
+
+st1_mtf_reg_SOX13 <- st1_mtf_reg %>% filter(MasterTF == "SOX13") %>% select(Gene_ID, RegulonID)
+names(st1_mtf_reg_SOX13) <- c("id", "module")
+st1_mtf_reg_SOX13$id <- as.character(st1_mtf_reg_SOX13$id)
+st1_mtf_reg_SOX13t <- as_tibble(st1_mtf_reg_SOX13) 
+st1_mtf_reg_SOX13t$module <- as.factor(st1_mtf_reg_SOX13t$module)
+
+
+plot_cells(cds, genes=unique(st1_mtf_reg_SOX13t$id),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("SOX13 regulon")
+
+
+```
+
+
+```{r}
+
+st1_mtf_reg_POU3F2 <- st1_mtf_reg %>% filter(MasterTF == "POU3F2") %>% select(Gene_ID, RegulonID)
+names(st1_mtf_reg_POU3F2) <- c("id", "module")
+st1_mtf_reg_POU3F2$id <- as.character(st1_mtf_reg_POU3F2$id)
+st1_mtf_reg_POU3F2t <- as_tibble(st1_mtf_reg_POU3F2) 
+st1_mtf_reg_POU3F2t$module <- as.factor(st1_mtf_reg_POU3F2t$module)
+
+
+plot_cells(cds, genes=unique(st1_mtf_reg_POU3F2t$id),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.5, label_leaves=FALSE) + theme(text = element_text(size = 20))
+
+
+
+```
+
+
+
+```{r}
+st9_mtf_reg_uw14R <- read.table("../Miner_related/Mishi/MINER_out_anal/St_9_UW14R_masterTF.txt", header = T, sep = "\t")
+
+st9_mtf_reg_JUN <- st9_mtf_reg_uw14R %>% filter(MasterTF == "JUN") %>% select(Gene_ID, RegulonID)
+names(st9_mtf_reg_JUN) <- c("id", "module")
+st9_mtf_reg_JUN$id <- as.character(st9_mtf_reg_JUN$id)
+st9_mtf_reg_JUNt <- as_tibble(st9_mtf_reg_JUN) 
+st9_mtf_reg_JUNt$module <- as.factor(st9_mtf_reg_JUNt$module)
+
+plot_cells(cds, genes=unique(st9_mtf_reg_JUNt$id),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("JUN regulon")
+
+```
+
+
+```{r}
+
+miner_net <- read.table("/mnt/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/MINER_network_detailedE.txt")
+minMonRv_JUN <- miner_net %>% filter(Regulator_ID == "JUN") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_JUN) <- c("id", "module")
+minMonRv_JUN$id <- as.character(minMonRv_JUN$id)
+minMonRv_JUNt <- as_tibble(minMonRv_JUN) 
+minMonRv_JUNt$module <- as.factor(minMonRv_JUNt$module)
+
+plot_cells(cds_sub_st9_1_sh, genes=unique(minMonRv_JUNt),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("JUN regulon")
+
+```
+
+
+```{r}
+
+minMonRv_OLIG1 <- miner_net %>% filter(Regulator_ID == "OLIG1") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_OLIG1) <- c("id", "module")
+minMonRv_OLIG1$id <- as.character(minMonRv_OLIG1$id)
+minMonRv_OLIG1t <- as_tibble(minMonRv_OLIG1) 
+minMonRv_OLIG1t$module <- as.factor(minMonRv_OLIG1t$module)
+
+plot_cells(cds, genes=unique(minMonRv_OLIG1t$id),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("OLIG1 regulon")
+
+
+```
+
+
+```{r}
+
+minMonRv_KLF12 <- miner_net %>% filter(Regulator_ID == "KLF12") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_KLF12) <- c("id", "module")
+minMonRv_KLF12$id <- as.character(minMonRv_KLF12$id)
+minMonRv_KLF12t <- as_tibble(minMonRv_KLF12) 
+minMonRv_KLF12t$module <- as.factor(minMonRv_KLF12t$module)
+
+plot_cells(cds_sub_st9_1_sh, genes=unique(minMonRv_KLF12t),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("KLF12 regulon")
+
+
+
+
+
+```
+
+
+
+
+
+```{r}
+
+
+minMonRv_ZEB1 <- miner_net %>% filter(Regulator_ID == "ZEB1") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_ZEB1) <- c("id", "module")
+minMonRv_ZEB1$id <- as.character(minMonRv_ZEB1$id)
+minMonRv_ZEB1t <- as_tibble(minMonRv_ZEB1) 
+minMonRv_ZEB1t$module <- as.factor(minMonRv_ZEB1t$module)
+
+plot_cells(cds, genes=unique(minMonRv_ZEB1t),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("ZEB1 regulon")
+
+
+```
+
+
+```{r}
+
+minMonRv_MEIS1 <- miner_net %>% filter(Regulator_ID == "MEIS1") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_MEIS1) <- c("id", "module")
+minMonRv_MEIS1$id <- as.character(minMonRv_MEIS1$id)
+minMonRv_MEIS1t <- as_tibble(minMonRv_MEIS1) 
+minMonRv_MEIS1t$module <- as.factor(minMonRv_MEIS1t$module)
+
+plot_cells(cds, genes=unique(minMonRv_MEIS1t),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("MEIS1 regulon")
+
+
+```
+
+
+```{r}
+minMonRv_CEBPD <- miner_net %>% filter(Regulator_ID == "CEBPD") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_CEBPD) <- c("id", "module")
+minMonRv_CEBPD$id <- as.character(minMonRv_CEBPD$id)
+minMonRv_CEBPDt <- as_tibble(minMonRv_CEBPD) 
+minMonRv_CEBPDt$module <- as.factor(minMonRv_CEBPD$module)
+
+plot_cells(cds, genes=unique(minMonRv_CEBPDt),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("CEBPD regulon")
+
+```
+
+
+```{r}
+minMonRv_SOX4 <- miner_net %>% filter(Regulator_ID == "SOX4") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_SOX4) <- c("id", "module")
+minMonRv_SOX4$id <- as.character(minMonRv_SOX4$id)
+minMonRv_SOX4t <- as_tibble(minMonRv_SOX4) 
+minMonRv_SOX4t$module <- as.factor(minMonRv_SOX4t$module)
+
+plot_cells(cds, genes=unique(minMonRv_SOX4t),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("SOX4 regulon")
+```
+
+
+```{r}
+
+
+minMonRv_SOX13 <- miner_net %>% filter(Regulator_ID == "SOX13") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_SOX13) <- c("id", "module")
+minMonRv_SOX13$id <- as.character(minMonRv_SOX13$id)
+minMonRv_SOX13t <- as_tibble(minMonRv_SOX13) 
+minMonRv_SOX13t$module <- as.factor(minMonRv_SOX13t$module)
+
+plot_cells(cds_sub_st9_1_sh, genes=unique(minMonRv_SOX13t),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("SOX13 regulon")
+
+
+
+
+```
+
+
+
+
+```{r}
+
+cds_sub_st9_1_sh <- cds[, colData(cds)$State %in% c("St_9","St_1")]
+cds_sub_st9_1_sh <- order_cells(cds_sub_st9_1_sh)
+minMonRv_RFX3 <- miner_net %>% filter(Regulator_ID == "RFX3") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_RFX3) <- c("id", "module")
+minMonRv_RFX3$id <- as.character(minMonRv_RFX3$id)
+minMonRv_RFX3t <- as_tibble(minMonRv_RFX3) 
+minMonRv_RFX3t$module <- as.factor(minMonRv_RFX3t$module)
+
+plot_cells(cds_sub_st9_1_sh, genes=unique(minMonRv_RFX3t),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("RFX3 regulon")
+
+```
+
+
+```{r}
+
+minMonRv_SOX9 <- miner_net %>% filter(Regulator_ID == "SOX9") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_SOX9) <- c("id", "module")
+minMonRv_SOX9$id <- as.character(minMonRv_SOX9$id)
+minMonRv_SOX9t <- as_tibble(minMonRv_SOX9) 
+minMonRv_SOX9t$module <- as.factor(minMonRv_SOX9t$module)
+
+plot_cells(cds_sub_st9_1_sh, genes=unique(minMonRv_SOX9t),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("SOX9 regulon")
+
+
+```
+
+
+
+```{r}
+
+minMonRv_ELF1 <- miner_net %>% filter(Regulator_ID == "ELF1") %>% select(Gene_ID, Regulon_ID)
+minMonRv_ELF1f <- miner_net %>% filter(Regulator_ID == "ELF1") %>% select(Gene_ID, Regulon_ID) %>% filter(Regulon_ID %in% c(393, 394, 395, 397, 398, 399, 400, 401, 402, 403, 404, 406, 407, 408))
+names(minMonRv_ELF1f) <- c("id", "module")
+minMonRv_ELF1f$id <- as.character(minMonRv_ELF1f$id)
+minMonRv_ELF1ft <- as_tibble(minMonRv_ELF1f) 
+minMonRv_ELF1ft$module <- as.factor(minMonRv_ELF1ft$module)
+
+plot_cells(cds_sub_st9_1_sh, genes=unique(minMonRv_ELF1ft),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("ELF1 regulon") + scale_color_gradient(low ="green", high = "red")
+
+
+```
+
+```{r}
+
+minMonRv_NF1 <- miner_net %>% filter(Regulator_ID == "NF1") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_NF1) <- c("id", "module")
+minMonRv_NF1$id <- as.character(minMonRv_NF1$id)
+minMonRv_NF1t <- as_tibble(minMonRv_NF1) 
+minMonRv_NF1t$module <- as.factor(minMonRv_NF1t$module)
+
+plot_cells(cds, genes=unique(minMonRv_NF1t),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("NF1 regulon")
+
+```
+
+
+```{r}
+
+minMonRv_POU2F1 <- miner_net %>% filter(Regulator_ID == "POU2F1") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_POU2F1) <- c("id", "module")
+minMonRv_POU2F1$id <- as.character(minMonRv_POU2F1$id)
+minMonRv_POU2F1t <- as_tibble(minMonRv_POU2F1) 
+minMonRv_POU2F1t$module <- as.factor(minMonRv_POU2F1t$module)
+
+plot_cells(cds_sub_st9_1_sh, genes=unique(minMonRv_POU2F1t),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("POU2F1 regulon")
+
+```
+
+
+```{r}
+
+minMonRv_POU3F3 <- miner_net %>% filter(Regulator_ID == "POU3F3") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_POU3F3) <- c("id", "module")
+minMonRv_POU3F3$id <- as.character(minMonRv_POU3F3$id)
+minMonRv_POU3F3t <- as_tibble(minMonRv_POU3F3) 
+minMonRv_POU3F3t$module <- as.factor(minMonRv_POU3F3t$module)
+
+plot_cells(cds_sub_st9_1_sh, genes=unique(minMonRv_POU3F3t),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("POU3F3 regulon")
+
+
+
+```
+
+
+```{r}
+
+minMonRv_FOXO3 <- miner_net %>% filter(Regulator_ID == "FOXO3") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_FOXO3) <- c("id", "module")
+minMonRv_FOXO3$id <- as.character(minMonRv_FOXO3$id)
+minMonRv_FOXO3t <- as_tibble(minMonRv_FOXO3) 
+minMonRv_FOXO3t$module <- as.factor(minMonRv_FOXO3t$module)
+
+plot_cells(cds_sub_st9_1_sh, genes=unique(minMonRv_FOXO3t),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("FOXO3 regulon")
+
+
+
+```
+
+
+```{r}
+minMonRv_CUX1 <- miner_net %>% filter(Regulator_ID == "CUX1") %>% select(Gene_ID, Regulon_ID)
+
+names(minMonRv_CUX1) <- c("id", "module")
+minMonRv_CUX1$id <- as.character(minMonRv_CUX1$id)
+minMonRv_CUX1t <- as_tibble(minMonRv_CUX1) 
+minMonRv_CUX1t$module <- as.factor(minMonRv_CUX1t$module)
+
+plot_cells(cds_sub_st9_1_sh, genes=unique(minMonRv_CUX1t),show_trajectory_graph=TRUE, label_cell_groups=FALSE, cell_size = 0.7, label_leaves=FALSE) + theme(text = element_text(size = 20)) + ggtitle("CUX1 regulon")
+
+```
+
+```{r}
+
+
+
+
+
+
+```
+
