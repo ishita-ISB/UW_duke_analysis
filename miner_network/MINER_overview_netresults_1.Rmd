@@ -1,0 +1,613 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+
+library(rjson)
+library(jsonlite)
+library(Seurat)
+library(dplyr)
+library(tidyverse)
+library(reshape)
+library(reshape2)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+
+## MINER run params:
+data: /mnt/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/
+Default parameters were used. 
+Note: State calculations could not be completed on local machine and eager node was used.
+
+
+```{r}
+##Load relevant files
+
+dir2search  <- "/mnt/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/miner_network_results_1/"
+
+#coherentMembers         <- read.csv(file = paste0(dir2search, "coherentMembers.csv"),
+#                                    header = TRUE, sep=",")
+#dysregulatedMembers     <- read.csv(file = paste0(dir2search, "dysregulatedMembers.csv"), header = TRUE, sep=",")
+eigengenes              <- read.csv(file = paste0(dir2search, "eigengenes.csv"),
+                                    header = TRUE, sep = ",")
+overExpressedMembers    <- read.csv(file = paste0(dir2search, "overExpressedMembers.csv"),
+                                    header = TRUE, sep = ",")
+regulonDF               <- read.csv(file = paste0(dir2search, "regulonDf.csv"),
+                                    header = TRUE, sep = ",")
+regulons_activity_heatmap  <- read.csv(file = paste0(dir2search,                                  "regulons_activity_heatmap.csv"), header = TRUE, sep = ",")
+#regulons_annotated      <- read.csv(file = paste0(dir2search, "mechinf_res/regulonDF.csv"), header = TRUE, sep = ",")
+underExpressedMembers   <- read.csv(file = paste0(dir2search,                                       "underExpressedMembers.csv"), header = TRUE, sep = ",")
+
+
+mechanisticOutput       <- fromJSON(paste0(dir2search, "mechanisticOutput.json"),
+                                    flatten = TRUE)
+regulons                <- fromJSON(paste0(dir2search, "regulons.json"), flatten = TRUE)
+#regulons_annotated      <- fromJSON(paste0(dir2search, "mechinf_res/regulons.json"), flatten = TRUE)
+coexpressionDictionary  <- fromJSON(paste0(dir2search, "coexpressionDictionary.json"),
+                                    flatten = TRUE)
+coregulationModule      <- fromJSON(paste0(dir2search, "coregulationModules.json"),
+                                    flatten = TRUE)
+
+tr.prgrs   <- fromJSON(paste0(dir2search, "transcriptional_programs.json"),
+                       flatten = TRUE)
+
+tr.states  <- fromJSON(paste0(dir2search, "transcriptional_states.json"),
+                       flatten = TRUE)
+```
+
+
+```{r}
+## Load id mapping, seurat object for gene exp and metadata
+
+id_map <- read.table("/mnt/omics4tb2/ishitaM/softwares/miner3/miner/data/identifiers_Genes.txt", sep = "\t", header = T)
+regulons_inf <- read.csv(file = paste0(dir2search, "regulonDF.csv"), header = TRUE, sep = ",", row.names = 1)
+
+gbm_tumor <- readRDS("/mnt/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/UW_integrated_patientTumor.rds")
+gbm_tumor@meta.data$GROUP_time[gbm_tumor@meta.data$orig.ident == "UWA7112"] <- c("Primary")
+gbmT_metadata <- read.table("/mnt/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/GBMtumor_mergedUW_metadata_ext.txt", sep ="\t", header = T)
+gbmT_meta_new <- read.table("~/Documents/GBM/miner_anal/GBM_tumorIntegrated_metadata_new.txt", sep ="\t", header = T)
+gbmT_metadata$GROUP_time[gbmT_metadata$orig.ident == "UWA7112"] <- c("Primary")
+gbmT_metaRev <- read.table("/mnt/omics4tb2/ishitaM/GBM_anoop_proposal/GBMintegrated_revM_metadata.txt", sep ="\t", header = T)
+
+```
+
+
+```{r}
+## Regulon details with gene info
+comk <- merge(regulons_inf, id_map, by.x = "Regulator", by.y = "Ensembl_Id")
+comk2 <- merge(comk, id_map, by.x = "Gene", by.y = "Ensembl_Id")
+regulon_details <- comk2 %>% select(c(Gene,Regulator,Regulon_ID,Gene.Name.x, Gene.Name.y))
+colnames(regulon_details) <- c("Gene","Regulator","Regulon_ID","Regulator_ID","Gene_ID")
+reg_gene_entries <- regulon_details %>% count(Regulon_ID)
+```
+
+```{r}
+head(regulon_details)
+```
+
+```{r}
+## Members (genes) in each regulon
+head(reg_gene_entries)
+```
+
+
+```{r}
+## Exploring states overall
+
+tr_st_allcomb <- c()
+for(k in 1:length(tr.states)){ 
+  tr_st_df <- as.data.frame(tr.states[k]); 
+  tr_st_nam <- rep(paste("St",k,sep = "_"), nrow(tr_st_df))
+  tr_st_det <- cbind(tr_st_nam, tr_st_df); 
+  #print(colnames(tr_st_det)); 
+  colnames(tr_st_det)<- c("State","Cell ID");
+  tr_st_allcomb <- rbind(tr_st_allcomb, tr_st_det)
+  }
+State_details <- tr_st_allcomb %>% count(State)
+
+rownames(tr_st_allcomb) <- tr_st_allcomb$`Cell ID`
+metadata_minerSt <- tr_st_allcomb %>% select(State)
+gbm_tumor <- AddMetaData(object = gbm_tumor, metadata = metadata_minerSt)
+
+DimPlot(gbm_tumor,group.by='orig.ident')
+DimPlot(gbm_tumor,group.by='State')
+DimPlot(gbm_tumor, group.by='State', split.by = "orig.ident")
+```
+
+
+```{r}
+DimPlot(gbm_tumor, group.by='State', split.by = "seurat_clusters")
+
+```
+
+
+```{r}
+## Members (cells) with similar states
+head(State_details)
+
+```
+
+```{r}
+tr_st_allcombMet <- merge(tr_st_allcomb, gbmT_metaSub, by.x = "Cell ID", by.y = "ID")
+```
+
+
+```{r}
+head(tr_st_allcomb)
+```
+
+
+
+```{r}
+##Exploring programs overall
+
+prog_exp <- c()
+for(k in 1:length(tr.prgrs)){ 
+  prList <- as.data.frame(tr.prgrs[k]); 
+  cpnam <- rep(paste("Pr",k,sep = "_"), nrow(prList))
+  vpDet <- cbind(cpnam, prList); 
+  #print(colnames(hgog)); 
+  colnames(vpDet)<- c("Program","Regulon ID");
+  prog_exp <- rbind(prog_exp, vpDet)
+  }
+
+prog_details <- prog_exp %>% count(Program)
+prog_reg_exp <- merge(prog_exp, regulon_details, by.x = "Regulon ID", by.y = "Regulon_ID")
+```
+
+```{r}
+#Programs, regulons, and genes information
+head(prog_reg_exp)
+```
+
+
+```{r}
+## Members (regulons) in each program
+head(prog_details)
+```
+
+
+```{r}
+print(paste("number of regulons:", length(regulons)))
+print(paste("number of programs:", length(tr.prgrs)))
+print(paste("number of states:", length(tr.states)))
+```
+
+```{r}
+cellIDs <- colnames(regulons_activity_heatmap)
+cellIDs[1] <- c("RegulonID")
+colnames(regulons_activity_heatmap) <- cellIDs
+reg_act_T <- regulons_activity_heatmap %>% pivot_longer(cols = !RegulonID, names_to = "Cell ids", values_to = "Activity")
+
+reg_act_T$`Cell ids` <- gsub("\\.", "-", reg_act_T$`Cell ids`)
+state_def_act <- merge(reg_act_T, tr_st_allcomb, by.y = c("Cell ID"), by.x = c("Cell ids"))
+#head(state_def_act)
+
+gbmT_metaSub <- gbmT_metadata %>% select(c("orig.ident", "GROUP_time"))
+gbmT_metaSub$ID <- row.names(gbmT_metaSub) 
+gbmT_metaSub$GROUP_time[gbmT_metaSub$orig.ident == "UWA7112"] <- c("Primary")
+state_def_actMet <- merge(state_def_act, gbmT_metaSub, by.x = "Cell ids", by.y = "ID")
+```
+
+
+```{r}
+## Regulon activity in each state
+head(state_def_act)
+
+```
+
+
+
+```{r}
+#Regulon activity in each state with metadata for all cell ids (states)
+head(state_def_actMet) 
+```
+
+```{r}
+# Replace regulon activity with program activity
+state_def_progReg <- merge(state_def_act, prog_exp, by.y = c("Regulon ID"), by.x = c("RegulonID"))
+head(state_def_progReg)
+```
+
+
+```{r}
+prog_act <- read.csv("/mnt/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/miner_network_results_1/Program_activity_Network_res_1_combined.txt")
+
+pat_ids <- colnames(prog_act)
+pat_ids[1] <- c("Program_ID")
+colnames(prog_act) <- pat_ids
+
+prog_act_T <- prog_act %>% pivot_longer(cols = !Program_ID, names_to = "Cell ids", values_to = "Prog Activity")
+head(prog_act_T)
+```
+
+
+
+```{r}
+
+prog_act_T$`Cell ids` <- gsub("\\.", "-", prog_act_T$`Cell ids`)
+state_def_4prog <- merge(prog_act_T, tr_st_allcomb, by.y = c("Cell ID"), by.x = c("Cell ids"))
+state_def_progMet <- merge(state_def_4prog, gbmT_metaSub, by.x = "Cell ids", by.y = "ID")
+head(state_def_progMet)
+```
+
+```{r}
+state_def_progMet2 <- state_def_progMet
+state_def_progMet2$Program_ID <- as.character(state_def_progMet2$Program_ID)
+ggplot(state_def_progMet2, aes(x= Program_ID, y = `Prog Activity`)) + geom_boxplot() +facet_wrap(~State)
+```
+
+
+```{r}
+pr_listY <- unique(state_def_progMet$Program_ID)
+state_listY <- unique(state_def_progMet$State)
+state_prog_met_sel <-mop_1217p
+for(i in 1:length(state_listY)){
+  
+  for(j in 1:length(pr_listY))
+  {
+    mop_val <- state_def_progMet %>% filter(State == state_listY[i] & Program_ID == pr_listY[j] ) %>% select(`Prog Activity`, Program_ID, State, GROUP_time) %>%  gather(key = variable, value = value, -GROUP_time, -State, -Program_ID) %>% group_by(GROUP_time, State, Program_ID, variable) %>% summarise(value = list(value)) %>% spread( GROUP_time, value) %>% 
+group_by(variable) %>%  mutate(p_value = t.test(unlist(Primary), unlist(Relapse))$p.value, t_value = t.test(unlist(Primary), unlist(Relapse))$statistic)
+    
+   state_prog_met_sel <- rbind(state_prog_met_sel, mop_val)
+    
+  }
+  
+}
+
+```
+
+```{r}
+for(i in 1:length(state_listYuw14c)){
+  for(j in 1:length(pr_listYuw14)){
+    print(state_listYuw14c[i])
+    mop_val <- state_prog_UW14 %>% filter(State == state_listYuw14c[i] & Program_ID == pr_listYuw14[j] ) %>% select(`Prog Activity`, Program_ID, State, GROUP_time) %>%  gather(key = variable, value = value, -GROUP_time, -State, -Program_ID) %>% group_by(GROUP_time, State, Program_ID, variable) %>% summarise(value = list(value)) %>% spread( GROUP_time, value) %>%
+    group_by(variable) %>%  mutate(p_value = t.test(unlist(Primary), unlist(Relapse))$p.value, t_value = t.test(unlist(Primary), unlist(Relapse))$statistic)
+    
+    state_prog_met_sel_UW14c <- rbind(state_prog_met_sel_UW14c, mop_val)
+    
+  }
+  
+}  
+
+```
+
+
+
+
+```{r}
+#extra programs per state get picked up
+
+sig_prST_dat <- state_def_progMet %>% filter(State %in% sigList_stID & Program_ID %in% sigList_prID)
+
+for(i in 1:length(sigList_stID$State)){
+    
+    for(j in 1:length(sigList_prID$Program_ID))
+    { 
+     uw14_filt <- state_def_progMet %>% filter(orig.ident %in% c("UW14","UW14R")) %>% filter(State %in% sigList_stID$State[i] & Program_ID %in% sigList_prID$Program_ID[j])
+      sig_prST_dat <- rbind(sig_prST_dat, uw14_filt)
+    }
+  
+  
+}
+#ggplot(state_def_progMet2, aes(x= State, y = `Prog Activity`, fill = GROUP_time)) + geom_boxplot() +facet_wrap(~Program)
+#ggplot( aes(x = State, y= `Prog Activity`, fill = GROUP_time)) + geom_boxplot() + facet_wrap(vars(Program_ID))
+```
+
+
+```{r}
+priRel_states_uw14 <- state_prog_met_sel_UW14 %>% filter(p_value <= 0.00005) %>% select(State) %>% distinct()
+filt_st5 <- state_prog_met_sel_UW14 %>% filter(p_value <= 0.00005) %>% filter(State == "St_5") %>% select(Program_ID) %>% distinct()
+st_5_uw14_filtdat <- state_def_progMet %>% filter(State== "St_5" & Program_ID %in% filt_st5$Program_ID & orig.ident %in% c("UW14", "UW14R"))
+st_5_uw14_filtdat %>%
+  ggplot( aes(x = State, y= `Prog Activity`, fill = GROUP_time)) + geom_boxplot() + facet_wrap(vars(Program_ID)) + xlab("States and Programs") + ylab("Program activity") + theme(axis.title = element_text(size = 20), axis.text = element_text(size = 16))
+```
+
+
+
+```{r}
+
+state_actC <- read.csv("/mnt/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/miner_network_results_1/State_activity_Network_res_1_combined.txt", sep = ",", header = T)
+
+colnames(state_actC) <- c("Gene","St_1","St_2","St_3","St_4","St_5","St_6","St_7","St_8","St_9","St_10","St_11","St_12","St_13","St_14","St_15","St_16","St_17","St_18","St_19","St_20","St_21")
+
+st_ids <- colnames(state_actC)
+
+state_actC_T <- state_actC %>% pivot_longer(cols = !Gene, names_to = "State ids", values_to = "Gene Activity")
+state_actC_Tdef <- merge(state_actC_T, id_map, by.x = "Gene", by.y = "Ensembl_Id")
+head(state_actC_Tdef)
+
+```
+
+
+
+```{r}
+st_at_Listy <- unique(state_actC_Tdef$`State ids`)
+gen_lis_stActUP <- list()
+
+for(g in 1:length(st_at_Listy)){
+  
+  st1_gnamUP <- state_actC_Tdef %>% filter(`State ids` == st_at_Listy[g] & `Gene Activity` > 0.5) %>% select(Gene.Name)
+  #names(st1_gnamUP) = st_at_Listy[g]
+  gen_lis_stActUP <- append(gen_lis_stActUP, st1_gnamUP)
+  
+}
+names(gen_lis_stActUP) <- st_at_Listy
+
+
+gen_lis_stActDN <- list()
+for(g in 1:length(st_at_Listy)){
+  
+  st1_gnamDN <- state_actC_Tdef %>% filter(`State ids` == st_at_Listy[g] & `Gene Activity` < -0.5) %>% select(Gene.Name)
+  gen_lis_stActDN <- append(gen_lis_stActDN, st1_gnamDN)
+  
+}
+names(gen_lis_stActDN) <- st_at_Listy
+
+```
+
+```{r}
+
+#Program activity comparision across states
+
+  for(j in 1:length(prl)){
+    #print(state_listYuw14c[i])
+    mop_val_sp <- st_d_prmet_uw14_uw14r %>% filter(Program_ID == prl[j] ) %>% select(`Prog Activity`, Program_ID, State) %>%  gather(key = variable, value = value, -State, -Program_ID) %>% group_by( State, Program_ID, variable) %>% summarise(value = list(value)) %>% spread(State,value) %>%  mutate(p_value = t.test(unlist(St_1), unlist(St_9))$p.value, t_value = t.test(unlist(St_1), unlist(St_9))$statistic)
+    
+    pr_st_pval <- rbind(pr_st_pval, mop_val_sp)
+    
+  }
+```
+
+
+```{r}
+
+
+uw14_median_regAct <- state_def_actMet %>% filter(orig.ident == "UW14") %>% select(State, orig.ident, `Cell ids`, RegulonID, Activity) %>% group_by(State, RegulonID) %>% mutate(Reg_med = median(Activity))
+
+st1_uw14_medRegA <- uw14_median_regAct %>% filter(State == "St_1") %>% filter(Reg_med > 0.6 | Reg_med < -0.6) %>% select(RegulonID) %>% distinct()
+
+paste(st1_uw14_medRegA$RegulonID, collapse = ", ")
+```
+
+```{r}
+
+for(i in 1:length(uw14_mTF_stL)){
+  TF_regA_stA <- data.frame(stringsAsFactors = FALSE)
+  uw14_mTFL <- uw14_masterTF %>% filter(State == uw14_mTF_stL[i]) %>% select(TF)
+  for(j in 1:length(uw14_mTFL$TF)){
+TF_regN <- regulon_details %>% filter(Regulator_ID == uw14_mTFL$TF[j])
+
+st_uw14_medRegA <- uw14_median_regAct %>% filter(State == uw14_mTF_stL[i]) %>% filter(Reg_med > 0.6 | Reg_med < -0.6) %>% select(RegulonID) %>% distinct()
+
+st_uw14_updn_regA <- state_def_actMet %>% filter(orig.ident == "UW14") %>% filter(State == uw14_mTF_stL[i]) %>% filter(RegulonID %in% st_uw14_medRegA$RegulonID)
+
+TF_regN_14 <- st_uw14_updn_regA %>% filter(RegulonID %in% TF_regN$Regulon_ID)
+TF_regN_14  <- cbind(uw14_mTFL$TF[j], TF_regN_14)
+colnames(TF_regN_14) <- c("MasterTF","Cell ids", "RegulonID", "Activity", "State", "orig.ident", "GROUP_time")
+TF_regA_stA <- rbind(TF_regA_stA,TF_regN_14)
+  }
+  #TF_regA_stA <- rbind(TF_regA_stA,TF_regN_14)
+  #TF_regA_stA <- TF_regA_stA[2:dim(TF_regA_stA)[1],]
+ ##p<-  ggplot(TF_regA_stA, aes(x=MasterTF, y=Activity, fill=State)) + geom_violin() + facet_wrap(~State)
+  #TF_regA_stA <- TF_regA_stA %>% drop_na()
+  TF_regA_stA$RegulonID <- as.factor(as.character(TF_regA_stA$RegulonID))
+ p<-  ggplot(TF_regA_stA, aes(x=State, y=Activity, fill=RegulonID)) + geom_violin(draw_quantiles = c(0.5)) + facet_wrap(~MasterTF) + ylim(-2.5,7.5) + geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic()
+ bobll <- paste("/users/imukherj/Documents/GBM/miner_anal/",uw14_mTF_stL[i],"_UW14_regAct_splitN.png", sep = "")
+ ggsave(bobll, dpi = 300, units = "in")
+}
+#adjust scale and font size and x y axis labels
+```
+
+
+```{r}
+
+for(i in 1:length(uw14R_mTF_stL)){
+  TF_regA_stA <- data.frame(stringsAsFactors = FALSE)
+  uw14_mTFL <- uw14R_masterTF %>% filter(State == uw14R_mTF_stL[i]) %>% select(TF)
+  for(j in 1:length(uw14_mTFL$TF)){
+TF_regN <- regulon_details %>% filter(Regulator_ID == uw14_mTFL$TF[j])
+
+st_uw14_medRegA <- uw14r_median_regAct %>% filter(State == uw14R_mTF_stL[i]) %>% filter(Reg_med > 0.6 | Reg_med < -0.6) %>% select(RegulonID) %>% distinct()
+
+st_uw14_updn_regA <- state_def_actMet %>% filter(orig.ident == "UW14R") %>% filter(State == uw14R_mTF_stL[i]) %>% filter(RegulonID %in% st_uw14_medRegA$RegulonID)
+
+TF_regN_14 <- st_uw14_updn_regA %>% filter(RegulonID %in% TF_regN$Regulon_ID)
+if(dim(TF_regN_14)[1] != 0){
+TF_regN_14  <- cbind(uw14_mTFL$TF[j], TF_regN_14)
+colnames(TF_regN_14) <- c("MasterTF","Cell ids", "RegulonID", "Activity", "State", "orig.ident", "GROUP_time")}
+TF_regA_stA <- rbind(TF_regA_stA,TF_regN_14)
+  }
+  #TF_regA_stA <- rbind(TF_regA_stA,TF_regN_14)
+  #TF_regA_stA <- TF_regA_stA[2:dim(TF_regA_stA)[1],]
+  TF_regA_stA <- TF_regA_stA %>% drop_na()
+  TF_regA_stA$RegulonID <- as.factor(TF_regA_stA$RegulonID)
+# p<-  ggplot(TF_regA_stA, aes(x=State, y=Activity, fill=RegulonID)) + geom_violin(draw_quantiles = c(0.5)) + facet_wrap(~MasterTF) + ylim(-2.5,7.5) + geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() 
+ 
+ ggplot(TF_regA_stA, aes(x=RegulonID, y=Activity, fill= MasterTF)) + geom_violin(draw_quantiles = c(0.5)) + ylim(-2.5,7.5) + geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic()+ theme(axis.text = element_text(size = 16), axis.title = element_text(size = 18))
+ 
+ bobll <- paste("/users/imukherj/Documents/GBM/miner_anal/",uw14R_mTF_stL[i],"_UW14R_regAct_splitN.png", sep = "")
+ ggsave(bobll, dpi = 300, units = "in")
+}
+
+
+```
+
+```{r}
+##boxplot
+
+
+for(i in 1:length(uw14R_mTF_stL)){
+  TF_regA_stA <- data.frame(stringsAsFactors = FALSE)
+  uw14_mTFL <- uw14R_masterTF %>% filter(State == uw14R_mTF_stL[i]) %>% select(TF)
+  for(j in 1:length(uw14_mTFL$TF)){
+TF_regN <- regulon_details %>% filter(Regulator_ID == uw14_mTFL$TF[j])
+
+st_uw14_medRegA <- uw14r_median_regAct %>% filter(State == uw14R_mTF_stL[i]) %>% filter(Reg_med > 0.6 | Reg_med < -0.6) %>% select(RegulonID) %>% distinct()
+
+st_uw14_updn_regA <- state_def_actMet %>% filter(orig.ident == "UW14R") %>% filter(State == uw14R_mTF_stL[i]) %>% filter(RegulonID %in% st_uw14_medRegA$RegulonID)
+
+TF_regN_14 <- st_uw14_updn_regA %>% filter(RegulonID %in% TF_regN$Regulon_ID)
+if(dim(TF_regN_14)[1] != 0){
+TF_regN_14  <- cbind(uw14_mTFL$TF[j], TF_regN_14)
+colnames(TF_regN_14) <- c("MasterTF","Cell ids", "RegulonID", "Activity", "State", "orig.ident", "GROUP_time")}
+TF_regA_stA <- rbind(TF_regA_stA,TF_regN_14)
+  }
+  #TF_regA_stA <- rbind(TF_regA_stA,TF_regN_14)
+  #TF_regA_stA <- TF_regA_stA[2:dim(TF_regA_stA)[1],]
+  TF_regA_stA <- TF_regA_stA %>% drop_na()
+  TF_regA_stA$RegulonID <- as.factor(TF_regA_stA$RegulonID)
+# p<-  ggplot(TF_regA_stA, aes(x=State, y=Activity, fill=RegulonID)) + geom_violin(draw_quantiles = c(0.5)) + facet_wrap(~MasterTF) + ylim(-2.5,7.5) + geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() 
+ 
+ ggplot(TF_regA_stA, aes(x=RegulonID, y=Activity, fill= MasterTF)) +  geom_boxplot()  + ylim(-2.5,7.5) + geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic()+ theme(axis.text = element_text(size = 16), axis.title = element_text(size = 18))
+ 
+ bobll <- paste("/users/imukherj/Documents/GBM/miner_anal/",uw14R_mTF_stL[i],"_UW14R_regAct_box.png", sep = "")
+ ggsave(bobll, dpi = 300, units = "in")
+}
+
+
+for(i in 1:length(uw14_mTF_stL)){
+  TF_regA_stA <- data.frame(stringsAsFactors = FALSE)
+  uw14_mTFL <- uw14_masterTF %>% filter(State == uw14_mTF_stL[i]) %>% select(TF)
+  for(j in 1:length(uw14_mTFL$TF)){
+TF_regN <- regulon_details %>% filter(Regulator_ID == uw14_mTFL$TF[j])
+
+st_uw14_medRegA <- uw14_median_regAct %>% filter(State == uw14_mTF_stL[i]) %>% filter(Reg_med > 0.6 | Reg_med < -0.6) %>% select(RegulonID) %>% distinct()
+
+st_uw14_updn_regA <- state_def_actMet %>% filter(orig.ident == "UW14") %>% filter(State == uw14_mTF_stL[i]) %>% filter(RegulonID %in% st_uw14_medRegA$RegulonID)
+
+TF_regN_14 <- st_uw14_updn_regA %>% filter(RegulonID %in% TF_regN$Regulon_ID)
+TF_regN_14  <- cbind(uw14_mTFL$TF[j], TF_regN_14)
+colnames(TF_regN_14) <- c("MasterTF","Cell ids", "RegulonID", "Activity", "State", "orig.ident", "GROUP_time")
+TF_regA_stA <- rbind(TF_regA_stA,TF_regN_14)
+  }
+  #TF_regA_stA <- rbind(TF_regA_stA,TF_regN_14)
+  #TF_regA_stA <- TF_regA_stA[2:dim(TF_regA_stA)[1],]
+ ##p<-  ggplot(TF_regA_stA, aes(x=MasterTF, y=Activity, fill=State)) + geom_violin() + facet_wrap(~State)
+  #TF_regA_stA <- TF_regA_stA %>% drop_na()
+  TF_regA_stA$RegulonID <- as.factor(as.character(TF_regA_stA$RegulonID))
+ p<-  ggplot(TF_regA_stA, aes(x=State, y=Activity, fill=RegulonID)) +  geom_boxplot()  + facet_wrap(~MasterTF) + ylim(-2.5,7.5) + geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic()
+ bobll <- paste("/users/imukherj/Documents/GBM/miner_anal/",uw14_mTF_stL[i],"_UW14_regAct_box.png", sep = "")
+ ggsave(bobll, dpi = 300, units = "in")
+}
+
+
+
+
+
+```
+
+
+
+
+
+```{r}
+TF_regA_no <- data.frame(stringsAsFactors = FALSE)
+for(i in 1:length(uw14_mTF_stL)){
+  #TF_regA_no <- data.frame(stringsAsFactors = FALSE)
+  uw14_mTFL <- uw14_masterTF %>% filter(State == uw14_mTF_stL[i]) %>% select(TF)
+  for(j in 1:length(uw14_mTFL$TF)){
+TF_regN <- regulon_details %>% filter(Regulator_ID == uw14_mTFL$TF[j])
+
+st_uw14_medRegA <- uw14_median_regAct %>% filter(State == uw14_mTF_stL[i]) %>% filter(Reg_med > 0.6 | Reg_med < -0.6) %>% select(RegulonID) %>% distinct()
+
+st_uw14_updn_regA <- state_def_actMet %>% filter(orig.ident == "UW14") %>% filter(State == uw14_mTF_stL[i]) %>% filter(RegulonID %in% st_uw14_medRegA$RegulonID)
+
+TF_regN_14 <- st_uw14_updn_regA %>% filter(RegulonID %in% TF_regN$Regulon_ID)
+TF_regN_14  <- cbind(uw14_mTFL$TF[j], TF_regN_14)
+colnames(TF_regN_14) <- c("MasterTF","Cell ids", "RegulonID", "Activity", "State", "orig.ident", "GROUP_time")
+
+reguL <- paste(unique(TF_regN_14$RegulonID), collapse = ",")
+progD  <- state_def_progReg %>% filter(State == uw14R_mTF_stL[i]) %>% filter(RegulonID %in% TF_regN_14$RegulonID)
+pID <- paste(unique(progD$Program), collapse = ",")
+
+st_regC <- cbind(uw14_mTF_stL[i], uw14_mTFL$TF[j], length(unique(TF_regN_14$RegulonID)), reguL, pID)
+TF_regA_no <- rbind(TF_regA_no, st_regC)
+  }
+  #TF_regA_stA <- rbind(TF_regA_stA,TF_regN_14)
+  #TF_regA_stA <- TF_regA_stA[2:dim(TF_regA_stA)[1],]
+ ##p<-  ggplot(TF_regA_stA, aes(x=MasterTF, y=Activity, fill=State)) + geom_violin() + facet_wrap(~State)
+  #TF_regA_stA <- TF_regA_stA %>% drop_na()
+  #TF_regA_stA$RegulonID <- as.factor(as.character(TF_regA_stA$RegulonID))
+ #p<-  ggplot(TF_regA_stA, aes(x=State, y=Activity, fill=RegulonID)) + geom_violin() + facet_wrap(~MasterTF)
+ #bobll <- paste("/users/imukherj/Documents/GBM/miner_anal/",uw14_mTF_stL[i],"_UW14_regAct_split.png", sep = "")
+ #ggsave(bobll, dpi = 300, units = "in")
+  
+}
+colnames(TF_regA_no) <- c("State", "MasterTF", "Reg_NO", "Reg_ID","Prog_ID")
+
+
+
+
+```
+
+
+```{r}
+TF_regA_noR <- data.frame(stringsAsFactors = FALSE)
+for(i in 1:length(uw14R_mTF_stL2)){
+  #TF_regA_stA <- data.frame(stringsAsFactors = FALSE)
+  uw14_mTFL <- uw14R_masterTF2 %>% filter(State == uw14R_mTF_stL2[i]) %>% select(TF)
+  for(j in 1:length(uw14_mTFL$TF)){
+TF_regN <- regulon_details %>% filter(Regulator_ID == uw14_mTFL$TF[j])
+
+#st_uw14_medRegA <- uw14r_median_regAct %>% filter(State == uw14R_mTF_stL[i]) %>% filter(Reg_med > 0.6 | Reg_med < -0.6) %>% select(RegulonID) %>% distinct()
+
+st_uw14_medRegA <- uw14r_median_regAct %>% filter(State == uw14R_mTF_stL2[i]) %>%  select(RegulonID) %>% distinct()
+
+st_uw14_updn_regA <- state_def_actMet %>% filter(orig.ident == "UW14R") %>% filter(State == uw14R_mTF_stL2[i]) %>% filter(RegulonID %in% st_uw14_medRegA$RegulonID)
+
+TF_regN_14 <- st_uw14_updn_regA %>% filter(RegulonID %in% TF_regN$Regulon_ID)
+if(dim(TF_regN_14)[1] != 0){
+TF_regN_14  <- cbind(uw14_mTFL$TF[j], TF_regN_14)
+colnames(TF_regN_14) <- c("MasterTF","Cell ids", "RegulonID", "Activity", "State", "orig.ident", "GROUP_time")}
+reguL <- paste(unique(TF_regN_14$RegulonID), collapse = ",")
+progD  <- state_def_progReg %>% filter(State == uw14R_mTF_stL2[i]) %>% filter(RegulonID %in% TF_regN_14$RegulonID)
+pID <- paste(unique(progD$Program), collapse = ",")
+st_regC <- cbind(uw14R_mTF_stL2[i], uw14_mTFL$TF[j], length(unique(TF_regN_14$RegulonID)), reguL, pID)
+TF_regA_noR <- rbind(TF_regA_noR, st_regC)
+#TF_regA_stA <- rbind(TF_regA_stA,TF_regN_14)
+
+  }
+  #TF_regA_stA <- rbind(TF_regA_stA,TF_regN_14)
+  #TF_regA_stA <- TF_regA_stA[2:dim(TF_regA_stA)[1],]
+  
+
+}
+colnames(TF_regA_noR) <- c("State", "MasterTF", "Reg_NO","Reg_ID", "Program_ID")
+
+```
+
+```{r}
+##State perc dist box significance
+
+
+  for(i in 1:length(seST_id$State)){
+    #print(state_listYuw14c[i])
+   # mop_val_sp <- st_d_prmet_uw14_uw14r %>% filter(Program_ID == prl[j] ) %>% select(`Prog Activity`, Program_ID, State) %>%  gather(key = variable, value = value, -State, -Program_ID) %>% group_by( State, Program_ID, variable) %>% summarise(value = list(value)) %>% spread(State,value) %>%  mutate(p_value = t.test(unlist(St_1), unlist(St_9))$p.value, t_value = t.test(unlist(St_1), unlist(St_9))$statistic)
+    
+    p_sig <- st_distFnormR %>% filter(State == seST_id$State[i] ) %>% select("State", "FQ",  "CondT") %>%  gather(key = variable, value = value, -State, -CondT) %>% group_by( State, CondT, variable) %>% summarise(value = list(value)) %>% spread(CondT,value) %>% mutate(p_value = t.test(unlist(Primary), unlist(Relapse))$p.value, t_value = t.test(unlist(Primary), unlist(Relapse))$statistic)
+    
+    stdistPR_sig <- rbind(stdistPR_sig, p_sig)
+    
+  }
+
+```
+
