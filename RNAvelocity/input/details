@@ -1,0 +1,5 @@
+Use loom files for UW14 primary (uw14RNA.loom) and UW14R relpase (uw14R_RNA.loom)
+Metadata file for UW14 : metadata_conv_uw14_RNAvel_all.txt and metadata_conv_uw144RNAvel.txt
+Metadata file for UW14R : metadata_conv_uw14_r_RNAvel.txt and metadata_conv_uw14_r_RNAvel_all.txt
+Seurat UMAP information UW14: UW14seurat2.h5ad
+Seurat UMAP information UW14R: UW14R_seurat2.h5ad
