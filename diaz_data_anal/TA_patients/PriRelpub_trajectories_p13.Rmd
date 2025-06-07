@@ -3,7 +3,9 @@ title: "R Notebook"
 output: html_notebook
 ---
 
+Trajectory analysis for PAtient 13 in Diaz data
 
+#Load relevant libraries
 
 ```{r}
 
