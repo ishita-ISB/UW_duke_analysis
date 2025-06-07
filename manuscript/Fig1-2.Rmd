@@ -1,0 +1,569 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+
+options(bitmapType = "cairo")
+library(rjson)
+library(jsonlite)
+library(Seurat)
+library(dplyr)
+library(tidyverse)
+library(reshape)
+library(reshape2)
+library(tidyr)
+library(ggplot2)
+
+library(dittoSeq)
+
+library(tidyverse)
+library(ComplexHeatmap)
+library(jsonlite)
+library(colorRamp2)
+library(magick)
+
+```
+
+##Read relevant input files
+```{r}
+
+gbm_UW <- readRDS("/users/imukherj/mani/Fig1/UW_integrated_patientOverall_anno.rds")
+gbm_UW_tumor <- readRDS("/users/imukherj/mani/Fig1/UW_integrated_patientTumor.rds")
+gbm_UW_tumor@meta.data$GROUP_time[gbm_UW_tumor@meta.data$orig.ident == "UWA7112"] <- c("Primary")
+#gbmT_metadata <- read.table("/users/imukherj/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/GBMtumor_mergedUW_metadata_ext.txt", sep ="\t", header = T)
+#gbmT_meta_new <- read.table("/users/imukherj/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/miner_network_results_1/GBM_tumorIntegrated_metadata_new.txt", sep ="\t", header = T)
+#gbmT_metadata$GROUP_time[gbmT_metadata$orig.ident == "UWA7112"] <- c("Primary")
+
+
+tr.states  <- fromJSON("/users/imukherj/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/miner_network_results_1/transcriptional_states.json",
+                       flatten = TRUE)
+# Load model files
+overExpressedMembersMatrix <- read_csv("/users/imukherj/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/miner_network_results_1/overExpressedMembers.csv") |>
+  column_to_rownames("...1")
+
+underExpressedMembersMatrix <- read_csv("/users/imukherj/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/miner_network_results_1/underExpressedMembers.csv") |>
+  column_to_rownames("...1")
+
+# Load programs ans states from model
+programs_json = read_json(simplifyVector = T,"/users/imukherj/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/miner_network_results_1/transcriptional_programs.json")
+states_json = read_json(simplifyVector = T, "/users/imukherj/omics4tb2/ishitaM/GBM_R01_stateMap/data/run2/miner_network_results_1/transcriptional_states.json")
+
+
+
+```
+
+##Fig 1A: Description
+
+```{r}
+DimPlot(gbm_UW, group.by='seurat_clusters') + NoLegend() + theme(axis.text = element_text(size = 18), text = element_text(size = 20))
+
+```
+
+##Fig 1B: Description
+#Regulon activity heatmap
+
+```{r}
+#use heatmap_figure.R
+# get the matrix file
+dfr = (overExpressedMembersMatrix-underExpressedMembersMatrix)
+
+# get ordering of the programs
+df2 <- arrange(dfr, factor(rownames(dfr), levels=as.vector(unlist(programs_json))))
+
+# get ordering of states
+df3 <- df2 |>
+  select(as.vector(unlist(states_json)))
+
+# unlist prgrams dictionary
+
+prog_df <- data.frame()
+for(i in 1:length(programs_json)){
+  tmp1 <- data.frame(programs_json[i]) %>%
+    rename("regulon" = 1) %>%
+    mutate(program = names(programs_json[i]))
+  prog_df <- bind_rows(prog_df, tmp1)
+}
+
+
+# unlist states dictionary
+state_df <- data.frame()
+for(i in 1:length(states_json)){
+  tmp1 <- data.frame(states_json[i]) %>%
+    rename("regulon" = 1) %>%
+    mutate(state = names(states_json[i]))
+  state_df <- bind_rows(state_df, tmp1)
+}
+
+
+
+prog_df <- prog_df %>%
+  column_to_rownames("regulon")
+
+prog_df_upT <- prog_df %>% mutate(idT = as.numeric(prog_df$program) + 1) %>% select(idT)
+colnames(prog_df_upT) <- c("program")
+prog_df <- prog_df_upT
+# filter for disease specific prgrams
+prog_df_disease <- prog_df 
+
+# get row names
+prog_df_rows <- prog_df |>
+  rownames_to_column("regulon")
+
+# get rownames for disease programs
+prog_df_disease_rows <- prog_df |>
+  rownames_to_column("regulon")
+
+
+
+# reformat for annotations
+prog_df_disease_final <- left_join(prog_df_rows,prog_df_disease_rows, by="regulon") |>
+  select(regulon, program.y) |>
+  rename("program" = "program.y") |>
+  column_to_rownames("regulon") |>
+  mutate(program = as.character(program)) |>
+  replace_na(list(program = "")) |>
+  mutate(color = if_else(program != "", "#dd99ff", "#ffffff"))
+
+# Final formatting fr annotations
+prog_df_annot <- prog_df_disease_final |>
+  rownames_to_column("regulon") |>
+  rownames_to_column("row_id") |>
+  group_by(program) |>
+  mutate(median_col = round(median(as.numeric(row_id)),digits = 0)) |>
+  mutate(median_col = if_else(program == "", "", paste0(median_col))) |>
+  filter(program != "") |>
+  select(program,median_col) |>
+  unique()
+
+### State annotations
+state_df <- state_df |>
+  column_to_rownames("regulon")
+
+state_df_upT <- state_df %>% mutate(idT = as.numeric(state_df$state) + 1) %>% select(idT)
+colnames(state_df_upT) <- c("state")
+state_df$state <- as.character(state_df_upT$state)
+#state_df <- state_df_upT
+
+# Final formatting fr annotations
+state_df_annot <- state_df |>
+  rownames_to_column("regulon") |>
+  rownames_to_column("row_id") |>
+  select(state)
+
+state_list = list()
+for(i in unique(state_df_annot$state)){
+  state_list[i] = list(which(state_df_annot$state == i))
+}
+
+state_starts = vector()
+for(i in unique(state_df_annot$state)){
+  state_start = which(state_df_annot$state == i)[1]
+  state_starts <- append(state_starts, state_start)
+}
+
+
+
+# color functions for bwr
+col_fun = colorRamp2(c(-1, 0, 1), c("#2166ac", "#f7f7f7", "#b2182b"))
+
+program_annotations <- 
+  anno_mark(
+    link_gp = gpar(fontsize = 2),
+    extend = F,
+    labels_gp = gpar(fontsize = 15),
+    padding = 0.1,
+    side = "left",
+    which = "row",
+    at = as.numeric(unlist(prog_df_annot$median_col)),
+    labels = as.character(prog_df_annot$program))
+  
+# funtion for drawing state annotations
+panel_fun = function(index, names) {
+  grid.rect(gp = gpar(fill = "orange", col = "white"))
+  grid.text(paste0(names), 0.5, 0.5, gp=gpar(fontsize = 14))
+}
+
+state_annotations <- HeatmapAnnotation(name = "States",  
+  State = anno_block(
+    align_to = state_list,
+    panel_fun = panel_fun,
+    gp = gpar(fill = "orange"),
+    which = "column",
+   ),
+  gap = unit(6, "mm"),
+  which="column")
+
+
+# create patient count anotations
+# change colun names for patients
+colnames(df3) <- seq(1,  length(colnames(df3)))
+ticks <- seq(0, length(colnames(df3)), 350)
+ticks_df <- as.data.frame(ticks)# data_frame(patient_no = colnames(df3)) |>
+  #mutate(label = if_else(patient_no %in% ticks, patient_no, ""))
+
+
+patient_annotations <- HeatmapAnnotation(
+  Patients = anno_mark(
+    at = as.numeric(ticks_df$ticks),
+    labels = as.character(ticks_df$ticks),
+    side = "bottom",
+    
+  #  gp = gpar(fill = "#333333"),
+    which = "column",
+  ),
+  which="column")
+
+
+
+ht1 <- Heatmap(as.matrix(df3),#left_annotation=program_annotations,
+        use_raster = T,
+        name="Activity",
+       #column_labels = ticks_df$label,
+        cluster_row_slices = F,cluster_column_slices = F,
+        row_title = "Programs",
+        column_title = "Cells",
+        row_title_side = "left",
+        column_title_side = "bottom",
+        row_dend_reorder = F,
+        show_row_dend = F,
+        raster_resize_mat = T,
+        raster_magick_filter = F,
+        show_column_dend = F,
+        show_column_names = F,
+        show_row_names = F,
+        cluster_columns = F,
+        cluster_rows = F,
+        column_split = state_df_annot,
+        column_gap = unit(1, "mm"),
+       column_names_gp = grid::gpar(fontsize = 18),
+       row_names_gp = grid::gpar(fontsize = 18),
+       column_title_gp = gpar(fontsize = 20, fontface = "bold"),
+       row_title_gp = gpar(fontsize = 20, fontface = "bold"),
+        #split = prog_df_annot,
+        #split=prog_df_disease_final,cluster_row_slices = F,
+        col=colorRampPalette(c("blue", "white", "red"))(100),
+        left_annotation = rowAnnotation(mark=program_annotations),
+        top_annotation = state_annotations, #columnAnnotation(df=state_df_annot,  gp = gpar(color = "yellow"))
+        bottom_annotation = patient_annotations
+        )
+
+pdf(file = "GBM_Model_Heatmapv2.pdf", width = 14, height = 10,)
+ht1
+dev.off()
+
+
+```
+
+
+##Fig1C: Description
+# UW data MINER analysis state distribution ditto plot
+```{r}
+
+tr_st_allcomb <- c()
+for(k in 1:length(tr.states)){ 
+  tr_st_df <- as.data.frame(tr.states[k]); 
+  tr_st_nam <- rep(paste("St",k,sep = "_"), nrow(tr_st_df))
+  tr_st_det <- cbind(tr_st_nam, tr_st_df); 
+  #print(colnames(tr_st_det)); 
+  colnames(tr_st_det)<- c("State","Cell ID");
+  tr_st_allcomb <- rbind(tr_st_allcomb, tr_st_det)
+  }
+#State_details <- tr_st_allcomb %>% count(State)
+
+rownames(tr_st_allcomb) <- tr_st_allcomb$`Cell ID`
+metadata_minerSt <- tr_st_allcomb %>% select(State)
+gbm_UW_tumor <- AddMetaData(object = gbm_UW_tumor, metadata = metadata_minerSt)
+metaLevels("State", gbm_UW_tumor)
+cluster_order <- match(c("St_1","St_2","St_3","St_4","St_5","St_6","St_7","St_8","St_9","St_10","St_11", "St_12", "St_13", "St_14", "St_15", "St_16", "St_17", "St_18", "St_19", "St_20", "St_21"), metaLevels("State", gbm_UW_tumor))
+#dittoBarPlot(gbm_UW_tumor, "State", group.by = "orig.ident",var.labels.reorder = cluster_order) + theme( axis.text = element_text(size = 22), axis.title = element_text(size = 24), legend.text = element_text(size = 20))
+
+dittoBarPlot(gbm_UW_tumor, "State", group.by = "orig.ident",var.labels.reorder = cluster_order, x.reorder = c(5,8,10,3,4,1,2,6,7,9,11)) + theme( axis.text = element_text(size = 22), axis.title = element_text(size = 24), legend.text = element_text(size = 20))
+```
+
+
+##Fig1D: Description
+#Diaz et al public data state distribution heatmap   
+```{r}
+pat2_stat <- read.table("PAtient2_mapped_states.txt")
+p2S<- as.data.frame(pat2_stat)
+p2S$PatID <- c("Patient 2")
+p2S$StateID <- rownames(p2S)
+rownames(p2S) <- c()
+p2s_rr <- p2S %>% mutate(Frac_pri = Primary/sum(p2S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p2S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+pat4_stat <- read.table("PAtient4_integrated_states.txt")
+p4S<- as.data.frame(pat4_stat)
+p4S$PatID <- c("Patient 4")
+p4S$StateID <- rownames(p4S)
+rownames(p4S) <- c()
+p4s_rr <- p4S %>% mutate(Frac_pri = Primary/sum(p4S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p4S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+pat5_stat <- read.table("Patient5_intMap_states.txt")
+p5S<- as.data.frame(pat5_stat)
+p5S$PatID <- c("Patient 5")
+p5S$StateID <- rownames(p5S)
+rownames(p5S) <- c()
+p5s_rr <- p5S %>% mutate(Frac_pri = Primary/sum(p5S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p5S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+pat6_stat <- read.table("Patient6_mapped_States.txt")
+p6S<- as.data.frame(pat6_stat)
+p6S$PatID <- c("Patient 6")
+p6S$StateID <- rownames(p6S)
+rownames(p6S) <- c()
+p6s_rr <- p6S %>% mutate(Frac_pri = Primary/sum(p6S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p6S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+pat7_stat <- read.table("Patient7_states_map.txt")
+p7S<- as.data.frame(pat7_stat)
+p7S$PatID <- c("Patient 7")
+p7S$StateID <- rownames(p7S)
+rownames(p7S) <- c()
+p7s_rr <- p7S %>% mutate(Frac_pri = Primary/sum(p7S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p7S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+pat9_stat <- read.table("Patient9_state_map.txt")
+p9S<- as.data.frame(pat9_stat)
+
+p9S$PatID <- c("Patient 9")
+p9S$StateID <- rownames(p9S)
+rownames(p9S) <- c()
+p9s_rr <- p9S %>% mutate(Frac_pri = Primary/sum(p9S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p9S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+pat10_stat <- read.table("PAtient10_integrated_states_map.txt")
+p10S<- as.data.frame(pat10_stat)
+p10S$PatID <- c("Patient 10")
+p10S$StateID <- rownames(p10S)
+rownames(p10S) <- c()
+p10s_rr <- p10S %>% mutate(Frac_pri = Primary/sum(p10S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p10S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+pat11_stat <- read.table("Patient11_statemap_int.txt")
+p11S<- as.data.frame(pat11_stat)
+p11S$PatID <- c("Patient 11")
+p11S$StateID <- rownames(p11S)
+rownames(p11S) <- c()
+p11s_rr <- p11S %>% mutate(Frac_pri = Primary/sum(p11S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p11S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+pat12_stat <- read.table("Patient12_state_intM.txt")
+p12S<- as.data.frame(pat12_stat)
+p12S$PatID <- c("Patient 12")
+p12S$StateID <- rownames(p12S)
+rownames(p12S) <- c()
+p12s_rr <- p12S %>% mutate(Frac_pri = Primary/sum(p12S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p12S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+
+
+pat13_stat <- read.table("Patient13_int_stateMap.txt")
+p13S<- as.data.frame(pat13_stat)
+p13S$PatID <- c("Patient 13")
+p13S$StateID <- rownames(p13S)
+rownames(p13S) <- c()
+p13s_rr <- p13S %>% mutate(Frac_pri = Primary/sum(p13S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p13S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+
+
+pat14_stat <- read.table("Patient14_stat_intMap.txt")
+p14S<- as.data.frame(pat14_stat)
+p14S$PatID <- c("Patient 14")
+p14S$StateID <- rownames(p14S)
+rownames(p14S) <- c()
+p14s_rr <- p14S %>% mutate(Frac_pri = Primary/sum(p14S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p14S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+
+
+pat15_stat <- read.table("Patient15_intStatMap.txt")
+p15S<- as.data.frame(pat15_stat)
+p15S$PatID <- c("Patient 15")
+p15S$StateID <- rownames(p15S)
+rownames(p15S) <- c()
+p15s_rr <- p15S %>% mutate(Frac_pri = Primary/sum(p15S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p15S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+
+pat18_stat <- read.table("Patient18_StatMapInt.txt")
+p18S<- as.data.frame(pat18_stat)
+p18S$PatID <- c("Patient 18")
+p18S$StateID <- rownames(p18S)
+rownames(p18S) <- c()
+p18s_rr <- p18S %>% mutate(Frac_pri = Primary/sum(p18S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p18S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+
+pat23_stat <- read.table("Patient23_intStateMap.txt")
+p23S<- as.data.frame(pat23_stat)
+p23S$PatID <- c("Patient 23")
+p23S$StateID <- rownames(p23S)
+rownames(p23S) <- c()
+p23s_rr <- p23S %>% mutate(Frac_pri = Primary/sum(p23S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p23S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+
+pat26_stat <- read.table("Patient26_StatesintMap.txt")
+p26S<- as.data.frame(pat26_stat)
+p26S$PatID <- c("Patient 26")
+p26S$StateID <- rownames(p26S)
+rownames(p26S) <- c()
+p26s_rr <- p26S %>% mutate(Frac_pri = Primary/sum(p26S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p26S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+
+pat27_stat <- read.table("Patient27_intMap_state.txt")
+p27S<- as.data.frame(pat27_stat)
+p27S$PatID <- c("Patient 27")
+
+p27S$StateID <- rownames(p27S)
+rownames(p27S) <- c()
+p27s_rr <- p27S %>% mutate(Frac_pri = Primary/sum(p27S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p27S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+
+pat28_stat <- read.table("Patient28_intStateMap.txt")
+p28S<- as.data.frame(pat28_stat)
+p28S$PatID <- c("Patient 28")
+
+p28S$StateID <- rownames(p28S)
+rownames(p28S) <- c()
+p28s_rr <- p28S %>% mutate(Frac_pri = Primary/sum(p28S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p28S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+
+pat29_stat <- read.table("Patient29_stateMap_stats.txt")
+p29S<- as.data.frame(pat29_stat)
+p29S$PatID <- c("Patient 29")
+
+p29S$StateID <- rownames(p29S)
+rownames(p29S) <- c()
+p29s_rr <- p29S %>% mutate(Frac_pri = Primary/sum(p29S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p29S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+
+pat30_stat <- read.table("Patient30_intStatMap.txt")
+p30S<- as.data.frame(pat30_stat)
+p30S$PatID <- c("Patient 30")
+
+p30S$StateID <- rownames(p30S)
+rownames(p30S) <- c()
+p30s_rr <- p30S %>% mutate(Frac_pri = Primary/sum(p30S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p30S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+
+
+pat31_stat <- read.table("Pat31_intStateMap.txt")
+p31S<- as.data.frame(pat31_stat)
+p31S$PatID <- c("Patient 31")
+
+p31S$StateID <- rownames(p31S)
+rownames(p31S) <- c()
+p31s_rr <- p31S %>% mutate(Frac_pri = Primary/sum(p31S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p31S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+
+
+pat32_stat <- read.table("Patient32_intStateMap.txt")
+p32S<- as.data.frame(pat32_stat)
+p32S$PatID <- c("Patient 32")
+
+p32S$StateID <- rownames(p32S)
+rownames(p32S) <- c()
+p32s_rr <- p32S %>% mutate(Frac_pri = Primary/sum(p32S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p32S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+
+pat33_stat <- read.table("Patient33_stateMapint.txt")
+p33S<- as.data.frame(pat33_stat)
+p33S$PatID <- c("Patient 33")
+
+p33S$StateID <- rownames(p33S)
+rownames(p33S) <- c()
+p33s_rr <- p33S %>% mutate(Frac_pri = Primary/sum(p33S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p33S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+pat34_stats <- read.table("Pat34_intStateMap.txt")
+p34S<- as.data.frame(pat34_stats)
+p34S$PatID <- c("Patient 34")
+
+p34S$StateID <- rownames(p34S)
+rownames(p34S) <- c()
+p34s_rr <- p34S %>% mutate(Frac_pri = Primary/sum(p34S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p34S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+
+
+com_pat_rr <-rbind(p2s_rr, p4s_rr, p5s_rr, p6s_rr, p7s_rr, p9s_rr, p10s_rr, p11s_rr, p12s_rr, p13s_rr, p14s_rr, p15s_rr, p18s_rr, p23s_rr, p26s_rr, p27s_rr, p28s_rr, p29s_rr, p30s_rr, p31s_rr, p32s_rr, p33s_rr, p34s_rr)
+#p2s_rr <- p2S %>% mutate(Frac_pri = Primary/sum(p2S$Primary)) %>% mutate(Frac_rel = Recurrent/sum(p2S$Recurrent)) %>% select(PatID,StateID, Frac_pri, Frac_rel) %>% pivot_longer(cols = c(Frac_pri, Frac_rel))
+
+ggplot(com_pat_rr, aes(fill=StateID, y=value, x=name)) + 
+       geom_bar(position="fill", stat="identity") + facet_wrap(~PatID)
+
+
+uw_int_patStD <- read.table("UW_integrated_patient_statePercntages.csv", sep = ",", header = T)
+com_pat_rr2 <- com_pat_rr %>% mutate(PercT = value*100)
+diaz_PR_stD <- com_pat_rr2 %>% mutate(CondT = if_else(name == "Frac_pri", "Primary","Relapse"))
+
+dist_P_inDiaz <- diaz_PR_stD %>%filter(CondT == "Primary") %>% select(StateID, PatID, PercT) %>% pivot_wider(names_from = StateID, values_from = PercT)
+
+dist_R_inDiaz <- diaz_PR_stD %>%filter(CondT == "Relapse") %>% select(StateID, PatID, PercT) %>% pivot_wider(names_from = StateID, values_from = PercT)
+
+dist_P_inDiaz <- as.data.frame(dist_P_inDiaz)
+rownames(dist_P_inDiaz) <- dist_P_inDiaz$PatID
+dist_P_inDiaz2 <- dist_P_inDiaz[,-1]
+dist_P_inDiaz2[is.na(dist_P_inDiaz2)] <- 0
+
+dist_R_inDiaz <- as.data.frame(dist_R_inDiaz)
+rownames(dist_R_inDiaz) <- dist_R_inDiaz$PatID
+dist_R_inDiaz2 <- dist_R_inDiaz[,-1]
+dist_R_inDiaz2[is.na(dist_R_inDiaz2)] <- 0
+
+dist_R_inDiaz3<-dist_R_inDiaz2 %>% select("St_1","St_2","St_3","St_4","St_5","St_6","St_7","St_8","St_9","St_10","St_11","St_12","St_13","St_14","St_15","St_16","St_17","St_18","St_19","St_20","St_21")
+
+dist_P_inDiaz3<-dist_P_inDiaz2 %>% select("St_1","St_2","St_3","St_4","St_5","St_6","St_7","St_8","St_9","St_10","St_11","St_12","St_13","St_14","St_15","St_16","St_17","St_18","St_19","St_20","St_21")
+
+pheatmap(as.matrix(t(dist_P_inDiaz3)), na_col = "grey", fontsize_row = 16, fontsize_col = 16, fontsize = 14,cluster_rows = F, cluster_cols = F, treeheight_col = 0,breaks = c(0,1,5,10, 20,30,100), color = c("white","lightblue","yellow","orange","darkorange","red"))
+
+pheatmap(as.matrix(t(dist_R_inDiaz3)), na_col = "grey", fontsize_row = 16, fontsize_col = 16, fontsize = 14,cluster_rows = F, cluster_cols = F, treeheight_col = 0,breaks = c(0,1,5,10, 20,30,100), color = c("white","lightblue","yellow","orange","darkorange","red"))
+
+```
+
+##Fig 1E: Description
+#Major states in UW and diaz data box plots
+```{r}
+#change color scheme 
+ggplot(com_pat_rr, aes(fill=StateID, y=value, x=name)) + 
+     geom_bar(position="fill", stat="identity") + facet_wrap(~PatID)
+
+com_pat_rr_m5 <- com_pat_rr %>% filter(StateID %in% c("St_1", "St_2", "St_5", "St_6","St_7", "St_11","St_15","St_21"))
+ggplot(com_pat_rr_m5, aes(y=value, x=StateID, fill = StateID)) + 
+     geom_boxplot() + theme_classic() + theme(text = element_text(size = 20)) +ylab("Percentage")
+#States with median value higher than 5%
+uw_int_patStD_m5 <- uw_int_patStD %>% filter(State %in% c("St_1", "St_2", "St_5", "St_6","St_8", "St_9","St_11","St_13"))
+ggplot(uw_int_patStD_m5, aes(y=FQ, x=State, fill = State)) + 
+     geom_boxplot() + theme_classic() + theme(text = element_text(size = 20)) +ylab("Percentage") 
+
+```
