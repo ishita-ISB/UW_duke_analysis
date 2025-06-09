@@ -1,2 +1,4 @@
 Raw data for publica data at: 
 omics4tb2/ishitaM/GBM_R01_swedish/sc_public_dat
+
+Create seurat object for each patient with "GBM_public_PriRelpair_sample1.Rmd" and metadata at "DiazEtAl_metadata_RNAseqsel.csv"
