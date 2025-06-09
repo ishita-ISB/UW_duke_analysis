@@ -1,0 +1,299 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+
+options(bitmapType = "cairo")
+library(Seurat)
+library(sctransform)
+library(ggplot2)
+library(MAST)
+library(dplyr)
+library(harmony)
+library(future)
+library(ArchR)
+library(monocle3)
+
+library(ggplot2)
+
+
+
+
+```
+
+
+
+```{r}
+##Patient id
+
+pat_id <- c("13")
+
+pati_list <- sc_meta %>% filter(Pair. == pat_id)
+priP_id <- pati_list$ID[1]
+relP_id <- pati_list$ID[2]
+
+print(priP_id)
+print(relP_id)
+
+```
+
+
+
+```{r}
+#Use object for priP_id and relP_id
+Primary_p1 <- SF3076
+Relapse_p2 <- SF3243
+
+Primary_p1 <- SCTransform(Primary_p1)
+Primary_p1 <- RunPCA(Primary_p1)
+Primary_p1 <- FindNeighbors(Primary_p1)
+Primary_p1 <- FindClusters(Primary_p1, resolution = 0.5)
+Primary_p1 <- RunUMAP(Primary_p1, dims = 1:50, return.model = T)
+
+Relapse_p2 <- SCTransform(Relapse_p2)
+Relapse_p2 <- RunPCA(Relapse_p2)
+Relapse_p2 <- FindNeighbors(Relapse_p2, dims = 1:30)
+Relapse_p2 <- FindClusters(Relapse_p2, resolution = 0.5)
+Relapse_p2 <- RunUMAP(Relapse_p2, dims = 1:50, return.model = T)
+
+
+
+
+```
+
+
+
+```{r}
+
+anchors_pri <- FindTransferAnchors(
+  reference = uw_ref,
+  query = Primary_p1,
+  normalization.method = "SCT",
+  reference.reduction = "pca",
+  dims = 1:50
+)
+
+pred_pri <- TransferData(anchorset = anchors_pri, refdata = uw_ref$State, dims = 1:50)
+Primary_p1_query <- AddMetaData(Primary_p1, metadata = pred_pri)
+
+Primary_p1_query <- MapQuery(anchorset = anchors_pri, reference = uw_ref, query = Primary_p1_query,
+    refdata = list(celltype = "State"), reference.reduction = "pca", reduction.model = "umap")
+
+
+
+anchors_rel <- FindTransferAnchors(
+  reference = uw_ref,
+  query = Relapse_p2,
+  normalization.method = "SCT",
+  reference.reduction = "pca",
+  dims = 1:50
+)
+
+pred_rel <- TransferData(anchorset = anchors_rel, refdata = uw_ref$State, dims = 1:50)
+Relapse_p2_query <- AddMetaData(Relapse_p2, metadata = pred_rel)
+
+Relapse_p2_query <- MapQuery(anchorset = anchors_rel, reference = uw_ref, query = Relapse_p2_query,
+    refdata = list(celltype = "State"), reference.reduction = "pca", reduction.model = "umap")
+
+
+gbm_mer_p13 <-merge(x = Primary_p1_query, y= Relapse_p2_query, project='Patient', add.cell.ids = pati_list$ID,merge.data=TRUE)
+
+gbm_mer_p13  <- NormalizeData(gbm_mer_p13)
+#gbm_mer_p5 <- FindVariableFeatures(gbm_mer_p5, selection.method = "vst", nfeatures = 3000)
+#all.genes <- rownames(gbm_mer_p5)
+#gbm_mer_p5 <- ScaleData(gbm_mer_p5, features = all.genes, vars.to.regress = "percent.mt")
+
+gbm_mer_p13 <-SCTransform(gbm_mer_p13,vars.to.regress=c('percent.mt','nCount_RNA','nFeature_RNA'))
+gbm_mer_p13 <- RunPCA(gbm_mer_p13)
+gbm_mer_p13 <-RunHarmony(gbm_mer_p13,reduction='pca',dims.use=1:20,group.by.vars='orig.ident',plot.convergence=T)
+#gbm_mer_p5 <- RunPCA(gbm_mer_p5)
+gbm_mer_p13 <- FindNeighbors(gbm_mer_p13, dims = 1:30)
+gbm_mer_p13 <- FindClusters(gbm_mer_p13)
+
+gbm_mer_p13 <- RunUMAP(gbm_mer_p13, dims=1:30)
+
+
+```
+
+
+```{r}
+total_cell_p13I <- sum(table(Idents(gbm_mer_p13)))
+tot_cell_p13S <- table(gbm_mer_p13$Stage)
+
+DimPlot(gbm_mer_p13, group.by='Stage', raster = F)
+DimPlot(gbm_mer_p13, group.by='predicted.celltype', raster = F)
+
+```
+
+
+
+```{r}
+
+gbm_gene1 <- as.data.frame(rownames(GetAssayData(object = gbm_mer_p13, slot = "counts")))
+colnames(gbm_gene1) <- c("gene_short_name")
+rownames(gbm_gene1) <- gbm_gene1$gene_short_name
+
+
+cds_p13 <- new_cell_data_set(GetAssayData(object = gbm_mer_p13, slot = "counts"),
+cell_metadata = gbm_mer_p13@meta.data,
+gene_metadata = gbm_gene1)
+
+
+## Step 1: Normalize and pre-process the data
+cds_p13 <- preprocess_cds(cds_p13, num_dim = 40)
+
+## Step 2: Remove batch effects with cell alignment
+cds_p13 <- align_cds(cds_p13, alignment_group = "Stage")
+
+## Step 3: Reduce the dimensions using UMAP
+cds_p13 <- reduce_dimension(cds_p13)
+
+#plot_cells(cds, label_groups_by_cluster=FALSE,  color_cells_by = "Celltype") + theme(text= element_text(size = 14), legend.position = "bottom", legend.text = element_text(size = 8))
+
+plot_cells(cds_p13, label_groups_by_cluster=FALSE,  color_cells_by = "Stage") + theme(text= element_text(size = 14), legend.position = "bottom", legend.text = element_text(size = 8))
+
+## Step 4: Cluster the cells
+cds_p13 <- cluster_cells(cds_p13, resolution = 1e-2)
+plot_cells(cds_p13, color_cells_by = "partition")
+
+## Step 5: Learn a graph
+cds_p13 <- learn_graph(cds_p13)
+
+#plot_cells(cds, color_cells_by = "Celltype",label_groups_by_cluster=FALSE, label_leaves=FALSE,label_branch_points=FALSE) + theme(legend.position = "bottom")
+
+plot_cells(cds_p13, color_cells_by = "Stage",label_groups_by_cluster=FALSE, label_leaves=FALSE,label_branch_points=FALSE) + theme(legend.position = "bottom")
+
+
+
+
+
+```
+
+
+```{r}
+
+get_earliest_principal_node <- function(cds_obj, time_bin="Primary"){
+  cell_ids <- which(colData(cds_obj)[, "Stage"] == time_bin)
+  
+  closest_vertex <-
+  cds_obj@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
+  closest_vertex <- as.matrix(closest_vertex[colnames(cds_obj), ])
+  root_pr_nodes <-
+  igraph::V(principal_graph(cds_obj)[["UMAP"]])$name[as.numeric(names
+  (which.max(table(closest_vertex[cell_ids,]))))]
+  
+  root_pr_nodes
+}
+cds_p13 <- order_cells(cds_p13, root_pr_nodes=get_earliest_principal_node(cds_p13))
+
+
+
+```
+
+
+```{r}
+plot_cells(cds_p13, color_cells_by = "Stage",label_groups_by_cluster=FALSE, label_leaves=FALSE,label_branch_points=FALSE) + theme(legend.position = "bottom")
+plot_cells(cds_p13, color_cells_by = "predicted.celltype",label_groups_by_cluster=FALSE, label_leaves=FALSE,label_branch_points=FALSE) + theme(legend.position = "bottom")
+
+
+
+```
+
+
+```{r}
+
+cds_p2_sub15_2 <- choose_graph_segments(cds_p2)
+tot2 <- sum(table(cds_p2_sub15_2@colData$predicted.id))
+
+pat2_stat15_tr2 <- as.data.frame((table(cds_p2_sub15_2@colData$predicted.id)/tot2)*100)
+
+ggplot(pat2_stat15_tr2, aes(x=Var1, y=Freq, label = Freq)) +     geom_bar(stat="identity") + theme_classic() + theme(axis.text = element_text(size = 18, angle = 90), axis.title = element_text(size = 18)) + xlab("State") + ylab("Percentage")
+
+
+```
+
+
+
+
+```{r}
+st_cols <- c("St_1" = "pink", "St_2" = "lightblue", "St_5" = "lightgreen", "St_6" = "orange")
+
+plot_cells(cds_p13, color_cells_by = "predicted.celltype",label_groups_by_cluster=FALSE, label_leaves=FALSE,label_branch_points=FALSE, group_label_size = 3.5, cell_size = 0.7) + theme(legend.position = "bottom", axis.text = element_text(size = 20)) + scale_color_manual(values = st_cols)
+
+
+
+```
+
+```{r}
+#save_monocle_objects(cds=cds_p2, directory_path='patient_2', comment='cds P2')
+
+#cds <- load_monocle_objects(directory_path='my_cds_objects')
+
+```
+
+
+```{r}
+
+cds_p2_sub15_2 <- choose_graph_segments(cds_p2)
+cds_p2_sub15_3 <- choose_cells(cds_p2)
+tot2 <- sum(table(cds_p2_sub15_2@colData$predicted.id))
+
+pat2_stat15_tr2 <- as.data.frame((table(cds_p2_sub15_2@colData$predicted.id)/tot2)*100)
+
+#pbuild <- plot_cells(cds_p2, color_cells_by = "pseudotime", label_cell_groups=T, show_trajectory_graph = F, label_leaves=F, label_branch_points=F, graph_label_size=3, group_label_size = 4, cell_size = 1)
+#cds_p2_early <- pbuild$data[c('predicted.id', 'cell_color')] %>% filter(cell_color != "Inf")%>%arrange(desc(cell_color)) %>% filter(cell_color <=1)
+#cds_p2_late <- pbuild$data[c('predicted.id', 'cell_color')] %>% filter(cell_color != "Inf")%>%arrange(desc(cell_color)) %>% filter(cell_color >= 12)
+#table(cds_p2_late2$predicted.id)
+#table(cds_p2_early2$predicted.id)
+```
+
+
+```{r}
+table(cds_p2_late2$predicted.id)
+```
+
+```{r}
+table(cds_p2_early2$predicted.id)
+```
+
+
+```{r}
+cds_p13_PT <- pbuild$data[c('predicted.id', 'cell_color')] %>% filter(cell_color != "Inf")%>%arrange(desc(cell_color))
+#cds_P13_PT2 <- cds_p13_PT %>% mutate(pdt_lab = if_else(cell_color < 4, "Early", if_else( cell_color > 20, "Late", "Intermediate")))
+sum(table(cds_P13_PT2$predicted.id))
+cds_P13_PT3 <- cds_p13_PT %>% mutate(pdt_lab = if_else(cell_color < 8, "Early", if_else( cell_color > 16, "Late", "Intermediate")))
+cds_P13_PT4 <- round((table(cds_P13_PT3$predicted.id, cds_P13_PT3$pdt_lab)/3544)*100,2)
+cds_P13_PT4 <- as.data.frame(cds_P13_PT4)
+colnames(cds_P13_PT4) <- c("State","PDT_lab","Percentage")
+
+ggplot(cds_P13_PT4, aes(fill=State, y=Percentage, x=PDT_lab)) + geom_bar(position="stack", stat="identity") + ylim(0,100)+  theme_classic()+ theme(text = element_text(size = 18)) + xlab("Pseudotime")
+```
+
+
+```{r}
+
+p13_states_PR <- pbuild_p13$data[c('predicted.id', 'cell_color','Stage')] %>% filter(cell_color != "Inf")%>%arrange(desc(cell_color))
+tp_bin <- seq(0, 24, by =3)
+#p13_stot <- sum(table(cds_p13_PT$predicted.id))
+
+for(j in 2:length(tp_bin)){
+cell_binT2 <- p13_states_PR %>% filter(cell_color <= tp_bin[j])
+
+p13_stot <- sum(table(cell_binT2$predicted.id))
+cell_prop <- round((table(cell_binT2$predicted.id, cell_binT2$Stage)/p13_stot)*100,2)
+cell_prop <- as.data.frame(cell_prop)
+Pbin_nam <-paste(tp_bin[j-1],"-",tp_bin[j])
+cell_prop$Part <- Pbin_nam
+colnames(cell_prop) <- c("State","Condition","Percentage","PDT")
+cellSt_traj_P13 <- rbind(cellSt_traj_P13, cell_prop)
+}
+colnames(cellSt_traj_P13) <- c("State","Condition","Percentage","PDT")
+ggplot(cellSt_traj_P13, aes(fill=State, y=Percentage, x=Condition)) + geom_bar(position="stack", stat="identity") + ylim(0,100)+  theme_classic()+ theme(text = element_text(size = 18) , axis.text.x = element_text(angle = 90)) + xlab("Pseudotime") +  facet_grid(~factor(PDT, levels=c("0 - 3", "3 - 6", "6 - 9", "9 - 12", "12 - 15", "15 - 18", "18 - 21","21 - 24")))
+
+
+```
+
