@@ -1,0 +1,1335 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(pheatmap)
+library(reshape2)
+
+library(readr)
+library(clusterProfiler)
+library(msigdbr)
+library(ggplot2)
+library(DT)
+library(enrichplot)
+library(DOSE)
+library(ReactomePA)
+library(tidyr)
+library(dplyr)
+library(org.Hs.eg.db)
+
+options(bitmapType = "cairo")
+```
+
+##State1
+
+```{r}
+mTF_st1_net <- read.csv("tf_tf_network_uw14_St1.csv", header = T)
+mTF_netA <- read.csv("TF_TF_network_UW14_new.csv", header = T)
+regulon_det <- read.csv("~/Miner_UWcohort/Miner_program_regulonDet.csv", row.names = 1)
+St1_prog_regulon_det <- read.csv("~/Miner_UWcohort/St1_masterTF_program_regulonDet.csv", row.names = 1)
+st1_mTF_regAct <- read.csv("~/Miner_UWcohort/St1_masterTF_regulonAct.csv", header = T, row.names = 1)
+st1_mTF_ProgAct <- read.csv("~/Miner_UWcohort/St1_masterTF_programAct.csv", header = T, row.names = 1)
+mTF_st1_listy <- mTF_netA %>% filter(State == "St_1") %>% select(TF) %>% distinct()
+miner_prog_reg_Det <- read.csv("~/Miner_UWcohort/MINER_program_regulonState_Details.csv", header = T, row.names = 1)
+regulonAct_all <- read.csv("~/Miner_UWcohort/State_regulonAct_all.csv", header = T, row.names = 1)
+ProgAct_all <- read.csv("~/Miner_UWcohort/State_programAct_all.csv", header = T, row.names = 1)
+
+```
+
+
+```{r}
+#options(bitmapType = "cairo")
+#mTF_st1_net %>% filter(Source == "SOX8") %>% select(Source, Target, Edge) %>% pivot_wider(names_from = Target, values_from = Edge)
+#sox8_st1 <- mTF_st1_net %>% filter(Source == "SOX8") %>% select(Source, Target, Edge) %>% pivot_wider(names_from = Target, values_from = Edge)
+#sox8_st1 <- as.data.frame(sox8_st1)
+#rownames(sox8_st1) <- sox8_st1$Source
+#sox8_st1[,-1]
+#pheatmap(sox8_st1, cluster_cols = F, cluster_rows = F)
+```
+
+
+```{r}
+masterTF_net_St1_only <- mTF_st1_net %>% filter(Source %in% mTF_st1_listy$TF)
+st1_progReg_det2 <-St1_prog_regulon_det %>% select(RegulonID,State,Program) %>% distinct()
+st1_progReg_det3 <- merge(st1_progReg_det2, regulon_det, by.x = "RegulonID", by.y = "Regulon_ID")
+st1_progReg_det5 <- merge(st1_progReg_det3, masterTF_net_St1_only, by.x = "Regulator_ID", by.y = "Source")
+st1_progReg_det6 <- st1_progReg_det5 %>% select(RegulonID, State, Program, Regulator_ID, Target, Edge) %>% distinct()
+St1_mTF_RegMiner_netA <- st1_progReg_det6 %>% select(Regulator_ID, Target, Edge)
+St1_mTF_RegMiner_netB <- st1_progReg_det6 %>% select(Regulator_ID, Program)
+St1_mTF_RegMiner_netC <- st1_progReg_det6 %>% select(Program, RegulonID)
+colnames(St1_mTF_RegMiner_netA) <- c("Regulator", "Target", "Edge")
+St1_mTF_RegMiner_netB$Edge <- c("Program")
+St1_mTF_RegMiner_netC$Edge <- c("Regulon")
+colnames(St1_mTF_RegMiner_netB) <- c("Regulator", "Target", "Edge")
+colnames(St1_mTF_RegMiner_netB) <- c("Regulator", "Target", "Edge")
+colnames(St1_mTF_RegMiner_netC) <- c("Regulator", "Target", "Edge")
+
+St1_mTF_RegMiner_netABC <- rbind(St1_mTF_RegMiner_netA,St1_mTF_RegMiner_netB)
+St1_mTF_RegMiner_netABC <- rbind(St1_mTF_RegMiner_netABC,St1_mTF_RegMiner_netC)
+St1_mTF_RegMiner_netABC2 <-St1_mTF_RegMiner_netABC %>% distinct()
+
+write.csv(St1_mTF_RegMiner_netABC2,"St1_masterTF_MinerNet_Ed.csv")
+
+```
+
+
+```{r}
+for(g in 1:length(mTF_st1_listy$TF)){
+st1_TF_TG <- St1_mTF_RegMiner_netA %>% filter(Regulator == mTF_st1_listy$TF[g]) %>% dplyr::select(Target) %>% distinct()
+
+#mTF_pr_ct<- st1_progReg_det3 %>% filter(Regulator_ID %in% st1_sox5_TG$Target) %>% dplyr::select(Program) %>% distinct() %>% count()
+  
+mTF_rg_ct <- regulon_det %>% filter(Regulator_ID %in% st1_TF_TG$Target) %>% dplyr::select(Regulon_ID) %>% distinct() %>% count()
+mTF_rg <- regulon_det %>% filter(Regulator_ID %in% st1_TF_TG$Target) %>% dplyr::select(Regulon_ID) %>% distinct()
+
+mTF_pr_ct <- miner_prog_reg_Det %>% filter(State== "St_1") %>% filter(RegulonID %in% mTF_rg$Regulon_ID) %>% dplyr::select(Program) %>% distinct() %>% count()
+
+mTF_rg_prCt <- cbind(mTF_st1_listy$TF[g],mTF_rg_ct$n, mTF_pr_ct$n)
+colnames(mTF_rg_prCt) <- c("mTF","Regulon No","Program No")
+mTF_st1_Det <- rbind(mTF_st1_Det,mTF_rg_prCt)
+}
+
+```
+
+
+
+```{r}
+mTF_st1_net_comb <- mTF_st1_net %>% select(Source, Target, Edge) %>% pivot_wider(names_from = Target, values_from = Edge)
+mTF_st1_net_comb <- as.data.frame(mTF_st1_net_comb)
+rownames(mTF_st1_net_comb) <- mTF_st1_net_comb$Source
+mTF_st1_net_comb2 <- mTF_st1_net_comb[,-1]
+
+pheatmap(mTF_st1_net_comb, cluster_cols = F, cluster_rows = F, angle_col = 90, color = c("lightblue","darkred"), breaks = c(-0.25,0,0.25), fontsize = 14)
+
+mTF_st1_net_comb_mTFO <- mTF_st1_net %>% dplyr::select(Source, Target, Edge) %>% filter(Source %in% mTF_st1_listy$TF) %>% pivot_wider(names_from = Target, values_from = Edge)
+mTF_st1_net_comb_mTFO <- as.data.frame(mTF_st1_net_comb_mTFO)
+rownames(mTF_st1_net_comb_mTFO) <- mTF_st1_net_comb_mTFO$Source
+mTF_st1_net_comb_mTFO2 <- mTF_st1_net_comb_mTFO[,-1]
+pheatmap(mTF_st1_net_comb_mTFO2, cluster_cols = F, cluster_rows = F, angle_col = 90, color = c("lightblue","darkred"), breaks = c(-0.25,0,0.25), fontsize = 18)
+
+mTF_mTF_net_st1 <- mTF_st1_net_comb %>% filter(Source %in% mTF_st1_listy$TF) %>% select(mTF_st1_listy$TF)
+pheatmap(mTF_mTF_rel_st1, cluster_cols = F, cluster_rows = F, angle_col = 90, color = c("lightblue","darkred"), breaks = c(-0.25,0,0.25), fontsize = 18)
+
+```
+
+
+```{r}
+st1_mTF_ProgAct_PatPrmean <-st1_mTF_ProgAct %>% group_by(orig.ident, Program_ID) %>% mutate(meanact = mean(Prog.Activity))
+st1_mTF_ProgAct_PatPrmedian <-st1_mTF_ProgAct %>% group_by(GROUP_time, Program_ID) %>% mutate(medact = median(Prog.Activity))
+
+##Programs controlled by 3, 4, or 5 mTFs
+St1_mTF_RegMiner_netB %>% group_by(Target,Regulator) %>% summarise() %>% count(Target) %>% arrange(desc(n)) %>% filter(n >= 3)
+
+# Pr: 10, 2, 13, 25, 29
+
+#over-active programs:
+st1_pr_over_lt <- st1_mTF_ProgAct_PatPrmean %>% filter(meanact > 0.6 ) %>% select(Program_ID) %>% distinct()
+# Pr: 2, 25, 4
+
+#under active programs:
+st1_pr_under_lt <- st1_mTF_ProgAct_PatPrmean %>% filter(meanact < -0.6) %>% select(Program_ID) %>% distinct()
+# Pr: 35, 28
+#Program activity plots
+
+st1_underAct <- st1_mTF_ProgAct_PatPrmean %>% filter(meanact < -0.6)
+ggplot(st1_underAct, aes(x=Program_ID, y=Prog.Activity, fill=State)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8)  +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+
+
+
+
+st1_overAct <- st1_mTF_ProgAct_PatPrmean %>% filter(meanact > 0.6 )
+ggplot(st1_overAct, aes(x=Program_ID, y=Prog.Activity, fill=State)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8)  +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+```
+
+
+```{r}
+
+pr35_geneN <- st1_progReg_det6 %>% filter(Program ==35) %>% select(Regulator_ID) %>% distinct()
+pr35_geneN2 <- st1_progReg_det6 %>% filter(Program ==35) %>% select(Target) %>% distinct()
+colnames(pr35_geneN) <- c("Gene Names")
+colnames(pr35_geneN2) <- c("Gene Names")
+pr35_geneN3 <- rbind(pr35_geneN, pr35_geneN2)
+pr35_geneN3_id <- bitr(pr35_geneN3$`Gene Names`, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+
+ego <- enrichGO(gene          = pr35_geneN3_id$SYMBOL, keyType = "SYMBOL",
+                 OrgDb         = org.Hs.eg.db,
+                 ont           = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.01,
+                 qvalueCutoff  = 0.05,
+                 readable      = TRUE)
+
+
+kk <- enrichKEGG(gene         = pr35_geneN3$`Gene Names`,
+                organism     = 'hsa',
+                pvalueCutoff = 0.05)
+
+ego <- enrichGO(gene          = pr35_geneN3_id$SYMBOL, keyType = "SYMBOL",
+                 OrgDb         = org.Hs.eg.db,
+                 ont           = "MF",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.01,
+                 qvalueCutoff  = 0.05,
+                 readable      = TRUE)
+
+x <- enrichPathway(gene=de, pvalueCutoff = 0.05, readable=TRUE)
+head(x)
+```
+
+
+
+```{r}
+for(i in 1:length(st1_pr_over_lt2)){
+  
+pr_geneN <- st1_progReg_det6 %>% filter(Program == st1_pr_over_lt2[i]) %>% dplyr::select(Regulator_ID) %>% distinct()
+pr_geneN2 <- st1_progReg_det6 %>% filter(Program == st1_pr_over_lt2[i]) %>% dplyr::select(Target) %>% distinct()
+colnames(pr_geneN) <- c("Gene Names")
+colnames(pr_geneN2) <- c("Gene Names")
+pr_geneN3 <- rbind(pr_geneN, pr_geneN2)
+pr_geneN3_id <- bitr(pr_geneN3$`Gene Names`, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+  
+
+ego <- enrichGO(gene          = pr_geneN3_id$SYMBOL, keyType = "SYMBOL",
+                 OrgDb         = org.Hs.eg.db,
+                 ont           = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.01,
+                 qvalueCutoff  = 0.05,
+                 readable      = TRUE)
+GO_BP_pr <- as.data.frame(ego@result[1:5,])
+GO_BP_pr2 <- GO_BP_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+GO_BP_pr2$Pcount <- as.numeric(GO_BP_pr2$Pcount)
+GO_BP_pr2$Count <- as.numeric(GO_BP_pr2$Count)
+GO_BP_pr2$Program <- st1_pr_over_lt2[i]
+GO_BP_pr3 <- GO_BP_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pGO <- paste("GO_BP", st1_pr_over_lt2[i], "UP2.csv",sep = "_")
+write.csv(GO_BP_pr3,pGO)
+
+kk <- enrichKEGG(gene         = pr_geneN3_id$ENTREZID,
+                organism     = 'hsa',
+                pvalueCutoff = 0.05)
+Kegg_pr <- as.data.frame(kk@result[1:5,])
+
+Kegg_pr2 <- Kegg_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+Kegg_pr2$Pcount <- as.numeric(Kegg_pr2$Pcount)
+Kegg_pr2$Count <- as.numeric(Kegg_pr2$Count)
+Kegg_pr2$Program <- st1_pr_over_lt2[i]
+Kegg_pr3 <- Kegg_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pKEGG <- paste("KEGG_ora", st1_pr_over_lt2[i], "UP2.csv",sep = "_")
+write.csv(Kegg_pr3, pKEGG)
+
+RPA <- enrichPathway(gene= pr_geneN3_id$ENTREZID, pvalueCutoff = 0.05, readable=TRUE)
+#head(RPA)
+
+RPA_pr <- as.data.frame(RPA@result[1:5,])
+
+RPA_pr2 <- RPA_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+RPA_pr2$Pcount <- as.numeric(RPA_pr2$Pcount)
+RPA_pr2$Count <- as.numeric(RPA_pr2$Count)
+RPA_pr2$Program <- st1_pr_over_lt2[i]
+RPA_pr3 <- RPA_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pRPA <- paste("Reactome_ora", st1_pr_over_lt2[i], "UP2.csv",sep = "_")
+write.csv(RPA_pr3, pRPA)
+
+
+}
+
+
+
+```
+
+
+```{r}
+
+Kegg_pr_enrUP_at <- Kegg_pr3[1,]
+react_pr_enrUP_at <- RPA_pr3[1,]
+GObp_pr_enrUP_at <- GO_BP_pr3[1,]
+
+for(i in 1:length(st1_pr_over_lt2)){
+pGO <- paste("GO_BP", st1_pr_over_lt2[i], "UP2.csv",sep = "_")
+try(pGO_enr <- read.csv(pGO, header = T, row.names = 1))
+GObp_pr_enrUP_at <- rbind(GObp_pr_enrUP_at, pGO_enr)
+
+#GObp_pr_enrUP_dt <- GObp_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+pKEGG <- paste("KEGG_ora", st1_pr_over_lt2[i], "UP2.csv",sep = "_")
+try(pKEGG_enr <- read.csv(pKEGG, header = T, row.names = 1))
+Kegg_pr_enrUP_at <- rbind(Kegg_pr_enrUP_at, pKEGG_enr)
+#Kegg_pr_enrUP_dt <- Kegg_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+pRPA <- paste("Reactome_ora", st1_pr_over_lt2[i], "UP2.csv",sep = "_")
+try(pRPA_enr <- read.csv(pRPA, header = T, row.names = 1))
+react_pr_enrUP_at <- rbind(react_pr_enrUP_at, pRPA_enr)
+#react_pr_enrUP_dt <- react_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+
+
+}
+#pGO <- paste("GO_BP", st1_pr_under_lt[i], "DN.csv",sep = "_")
+#pKEGG <- paste("KEGG_ora", st1_pr_under_lt[i], "DN.csv",sep = "_")
+#pRPA <- paste("Reactome_ora", st1_pr_under_lt[i], "DN.csv",sep = "_")
+write.csv(Kegg_pr_enrUP_at, "KEGG_enr_UP_St1_path2.csv")
+Kegg_pr_enrUP_dt <- Kegg_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program)%>% distinct(Program, Description, .keep_all = T) %>% pivot_wider(names_from = Program, values_from = geneRat)
+Kegg_pr_enrUP_dt <- as.data.frame(Kegg_pr_enrUP_dt)
+rownames(Kegg_pr_enrUP_dt) <- Kegg_pr_enrUP_dt$Description
+Kegg_pr_enrUP_dt[is.na(Kegg_pr_enrUP_dt)] <- 0
+Kegg_pr_enrUP_dt <- Kegg_pr_enrUP_dt[,-1]
+
+write.csv(react_pr_enrUP_at, "Reactome_enr_UP_St1_path2.csv")
+#pheatmap(Rp_pt_st1_DN_dt2, cluster_rows = F, cluster_cols = F, na_col = c("grey"), angle_col = 45, fontsize = 16)
+react_pr_enrUP_dt <- react_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program)%>% distinct(Program, Description, .keep_all = T) %>% pivot_wider(names_from = Program, values_from = geneRat)
+react_pr_enrUP_dt2 <- as.data.frame(react_pr_enrUP_dt)
+rownames(react_pr_enrUP_dt2) <- react_pr_enrUP_dt$Description
+react_pr_enrUP_dt2[is.na(react_pr_enrUP_dt2)] <- 0
+react_pr_enrUP_dt2 <- react_pr_enrUP_dt2[,-1]
+
+write.csv(GObp_pr_enrUP_at, "GOBP_enr_UP_St1_path2.csv")
+#pheatmap(Rp_pt_st1_DN_dt2, cluster_rows = F, cluster_cols = F, na_col = c("grey"), angle_col = 45, fontsize = 16)
+GObp_pr_enrUP_dt <- GObp_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% distinct(Program, Description, .keep_all = T) %>% pivot_wider(names_from = Program, values_from = geneRat)
+GObp_pr_enrUP_dt <- as.data.frame(GObp_pr_enrUP_dt)
+rownames(GObp_pr_enrUP_dt) <- GObp_pr_enrUP_dt$Description
+GObp_pr_enrUP_dt[is.na(GObp_pr_enrUP_dt)] <- 0
+GObp_pr_enrUP_dt <- GObp_pr_enrUP_dt[,-1]
+
+
+```
+
+
+
+```{r}
+for(i in 1:length(st1_pr_under_lt3)){
+  
+pr_geneN <- st1_progReg_det6 %>% filter(Program == st1_pr_under_lt3[i]) %>% dplyr::select(Regulator_ID) %>% distinct()
+pr_geneN2 <- st1_progReg_det6 %>% filter(Program == st1_pr_under_lt3[i]) %>% dplyr::select(Target) %>% distinct()
+colnames(pr_geneN) <- c("Gene Names")
+colnames(pr_geneN2) <- c("Gene Names")
+pr_geneN3 <- rbind(pr_geneN, pr_geneN2)
+pr_geneN3_id <- bitr(pr_geneN3$`Gene Names`, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+  
+
+ego <- enrichGO(gene          = pr_geneN3_id$SYMBOL, keyType = "SYMBOL",
+                 OrgDb         = org.Hs.eg.db,
+                 ont           = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.01,
+                 qvalueCutoff  = 0.05,
+                 readable      = TRUE)
+GO_BP_pr <- as.data.frame(ego@result[1:5,])
+GO_BP_pr2 <- GO_BP_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+GO_BP_pr2$Pcount <- as.numeric(GO_BP_pr2$Pcount)
+GO_BP_pr2$Count <- as.numeric(GO_BP_pr2$Count)
+GO_BP_pr2$Program <- st1_pr_under_lt3[i]
+GO_BP_pr3 <- GO_BP_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pGO <- paste("GO_BP", st1_pr_under_lt3[i], "DN2.csv",sep = "_")
+write.csv(GO_BP_pr3,pGO)
+
+kk <- enrichKEGG(gene         = pr_geneN3_id$ENTREZID,
+                organism     = 'hsa',
+                pvalueCutoff = 0.05)
+Kegg_pr <- as.data.frame(kk@result[1:5,])
+
+Kegg_pr2 <- Kegg_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+Kegg_pr2$Pcount <- as.numeric(Kegg_pr2$Pcount)
+Kegg_pr2$Count <- as.numeric(Kegg_pr2$Count)
+Kegg_pr2$Program <- st1_pr_under_lt3[i]
+Kegg_pr3 <- Kegg_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pKEGG <- paste("KEGG_ora", st1_pr_under_lt3[i], "DN2.csv",sep = "_")
+write.csv(Kegg_pr3, pKEGG)
+
+RPA <- enrichPathway(gene= pr_geneN3_id$ENTREZID, pvalueCutoff = 0.05, readable=TRUE)
+#head(RPA)
+
+RPA_pr <- as.data.frame(RPA@result[1:5,])
+
+RPA_pr2 <- RPA_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+RPA_pr2$Pcount <- as.numeric(RPA_pr2$Pcount)
+RPA_pr2$Count <- as.numeric(RPA_pr2$Count)
+RPA_pr2$Program <- st1_pr_under_lt3[i]
+RPA_pr3 <- RPA_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pRPA <- paste("Reactome_ora", st1_pr_under_lt3[i], "DN2.csv",sep = "_")
+write.csv(RPA_pr3, pRPA)
+
+
+}
+
+
+```
+
+
+```{r}
+
+Kegg_pr_enrDN_at <- Kegg_pr3[1,]
+react_pr_enrDN_at <- RPA_pr3[1,]
+GObp_pr_enrDN_at <- GO_BP_pr3[1,]
+
+for(i in 1:length(st1_pr_under_lt2)){
+pGO <- paste("GO_BP", st1_pr_under_lt[i], "DN2.csv",sep = "_")
+try(pGO_enr <- read.csv(pGO, header = T, row.names = 1))
+GObp_pr_enrDN_at <- rbind(GObp_pr_enrDN_at, pGO_enr)
+
+#GObp_pr_enrUP_dt <- GObp_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+pKEGG <- paste("KEGG_ora", st1_pr_under_lt2[i], "DN2.csv",sep = "_")
+try(pKEGG_enr <- read.csv(pKEGG, header = T, row.names = 1))
+Kegg_pr_enrDN_at <- rbind(Kegg_pr_enrDN_at, pKEGG_enr)
+#Kegg_pr_enrUP_dt <- Kegg_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+pRPA <- paste("Reactome_ora", st1_pr_under_lt2[i], "DN2.csv",sep = "_")
+try(pRPA_enr <- read.csv(pRPA, header = T, row.names = 1))
+react_pr_enrDN_at <- rbind(react_pr_enrDN_at, pRPA_enr)
+#react_pr_enrUP_dt <- react_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+
+
+}
+#pGO <- paste("GO_BP", st1_pr_under_lt[i], "DN.csv",sep = "_")
+#pKEGG <- paste("KEGG_ora", st1_pr_under_lt[i], "DN.csv",sep = "_")
+#pRPA <- paste("Reactome_ora", st1_pr_under_lt[i], "DN.csv",sep = "_")
+write.csv(Kegg_pr_enrDN_at, "KEGG_enr_DN_St1_path2.csv")
+Kegg_pr_enrDN_dt <- Kegg_pr_enrDN_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program)%>% distinct() %>% pivot_wider(names_from = Program, values_from = geneRat)
+Kegg_pr_enrDN_dt <- as.data.frame(Kegg_pr_enrDN_dt)
+rownames(Kegg_pr_enrDN_dt) <- Kegg_pr_enrDN_dt$Description
+Kegg_pr_enrDN_dt[is.na(Kegg_pr_enrDN_dt)] <- 0
+Kegg_pr_enrDN_dt <- Kegg_pr_enrDN_dt[,-1]
+
+write.csv(react_pr_enrDN_at, "Reactome_enr_DN_St1_path2.csv")
+#pheatmap(Rp_pt_st1_DN_dt2, cluster_rows = F, cluster_cols = F, na_col = c("grey"), angle_col = 45, fontsize = 16)
+react_pr_enrDN_dt <- react_pr_enrDN_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program)%>% distinct() %>% pivot_wider(names_from = Program, values_from = geneRat)
+react_pr_enrDN_dt2 <- as.data.frame(react_pr_enrDN_dt)
+rownames(react_pr_enrDN_dt2) <- react_pr_enrDN_dt$Description
+react_pr_enrDN_dt2[is.na(react_pr_enrDN_dt2)] <- 0
+react_pr_enrDN_dt2 <- react_pr_enrDN_dt2[,-1]
+
+write.csv(GObp_pr_enrDN_at, "GOBP_enr_DN_St1_path2.csv")
+#pheatmap(Rp_pt_st1_DN_dt2, cluster_rows = F, cluster_cols = F, na_col = c("grey"), angle_col = 45, fontsize = 16)
+GObp_pr_enrDN_dt <- GObp_pr_enrDN_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% distinct() %>% pivot_wider(names_from = Program, values_from = geneRat)
+GObp_pr_enrDN_dt <- as.data.frame(GObp_pr_enrDN_dt)
+rownames(GObp_pr_enrDN_dt) <- GObp_pr_enrDN_dt$Description
+GObp_pr_enrDN_dt[is.na(GObp_pr_enrDN_dt)] <- 0
+GObp_pr_enrDN_dt <- GObp_pr_enrDN_dt[,-1]
+
+
+```
+
+
+
+```{r}
+
+for(i in 1:length(st1_pr_mTF2)){
+  
+pr_geneN <- st1_progReg_det6 %>% filter(Program == st1_pr_mTF2[i]) %>% dplyr::select(Regulator_ID) %>% distinct()
+pr_geneN2 <- st1_progReg_det6 %>% filter(Program == st1_pr_mTF2[i]) %>% dplyr::select(Target) %>% distinct()
+colnames(pr_geneN) <- c("Gene Names")
+colnames(pr_geneN2) <- c("Gene Names")
+pr_geneN3 <- rbind(pr_geneN, pr_geneN2)
+pr_geneN3_id <- bitr(pr_geneN3$`Gene Names`, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+  
+
+ego <- enrichGO(gene          = pr_geneN3_id$SYMBOL, keyType = "SYMBOL",
+                 OrgDb         = org.Hs.eg.db,
+                 ont           = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.01,
+                 qvalueCutoff  = 0.05,
+                 readable      = TRUE)
+GO_BP_pr <- as.data.frame(ego@result[1:5,])
+GO_BP_pr2 <- GO_BP_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust)  %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+GO_BP_pr2$Pcount <- as.numeric(GO_BP_pr2$Pcount)
+GO_BP_pr2$Count <- as.numeric(GO_BP_pr2$Count)
+GO_BP_pr2$Program <- st1_pr_mTF2[i]
+GO_BP_pr3 <- GO_BP_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pGO <- paste("GO_BP", st1_pr_mTF2[i], "net.csv",sep = "_")
+write.csv(GO_BP_pr3,pGO)
+
+kk <- enrichKEGG(gene         = pr_geneN3_id$ENTREZID,
+                organism     = 'hsa',
+                pvalueCutoff = 0.05)
+Kegg_pr <- as.data.frame(kk@result[1:5,])
+
+Kegg_pr2 <- Kegg_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust)  %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+Kegg_pr2$Pcount <- as.numeric(Kegg_pr2$Pcount)
+Kegg_pr2$Count <- as.numeric(Kegg_pr2$Count)
+Kegg_pr2$Program <- st1_pr_mTF2[i]
+Kegg_pr3 <- Kegg_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pKEGG <- paste("KEGG_ora", st1_pr_mTF2[i], "net.csv",sep = "_")
+write.csv(Kegg_pr3, pKEGG)
+
+RPA <- enrichPathway(gene= pr_geneN3_id$ENTREZID, pvalueCutoff = 0.05, readable=TRUE)
+#head(RPA)
+
+RPA_pr <- as.data.frame(RPA@result[1:5,])
+
+RPA_pr2 <- RPA_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust)  %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+RPA_pr2$Pcount <- as.numeric(RPA_pr2$Pcount)
+RPA_pr2$Count <- as.numeric(RPA_pr2$Count)
+RPA_pr2$Program <- st1_pr_mTF2[i]
+RPA_pr3 <- RPA_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pRPA <- paste("Reactome_ora", st1_pr_mTF2[i], "net.csv",sep = "_")
+write.csv(RPA_pr3, pRPA)
+
+
+}
+
+```
+
+
+```{r}
+
+
+
+
+```
+
+
+
+##State2
+
+
+```{r}
+mTF_st2_net <- read.csv("tf_tf_network_st2_uw14.csv", header = T, row.names = 1)
+
+
+```
+
+
+
+
+```{r}
+
+#mTF_st2_net <- read.csv("tf_tf_network_st2_uw14.csv", header = T, row.names = 1)
+TF_TF_st2_net_comb <- mTF_st2_net %>% dplyr::select(Source, Target, Edge) %>% pivot_wider(names_from = Target, values_from = Edge)
+TF_TF_st2_net_comb <- as.data.frame(TF_TF_st2_net_comb)
+rownames(TF_TF_st2_net_comb) <- TF_TF_st2_net_comb$Source
+TF_TF_st2_net_comb2 <- TF_TF_st2_net_comb[,-1]
+
+pheatmap(TF_TF_st2_net_comb2, cluster_cols = F, cluster_rows = F, angle_col = 90, color = c("lightblue","darkred"), breaks = c(-0.25,0,0.25), fontsize = 14)
+
+mTF_st2_listy <- mTF_netA %>% filter(State == "St_2") %>% dplyr::select(TF) %>% distinct()
+mTF_st2_net_comb_mTFO <- TF_TF_st2_net_comb %>% filter(Source %in% mTF_st2_listy$TF)
+mTF_st2_net_comb_mTFO <- as.data.frame(mTF_st2_net_comb_mTFO)
+rownames(mTF_st2_net_comb_mTFO) <- mTF_st2_net_comb_mTFO$Source
+mTF_st2_net_comb_mTFO2 <- mTF_st2_net_comb_mTFO[,-1]
+
+mTF_mTF_net_st2 <- TF_TF_st2_net_comb %>% filter(Source %in% mTF_st2_listy$TF) %>% dplyr::select(c("SOX9", "SOX8","POU3F3", "SOX4")) 
+
+
+```
+
+
+```{r}
+mTF_st2_listy <- mTF_netA %>% filter(State == "St_2") %>% dplyr::select(TF) %>% distinct()
+St2_regulonID <- regulon_det %>% filter(Regulator_ID %in% mTF_st2_listy$TF) %>% dplyr::select(Regulon_ID)
+St2_programID <- miner_prog_reg_Det %>% filter(RegulonID %in% St2_regulonID$Regulon_ID & State == "St_2")
+St2_mTF_regulon_act <- regulonAct_all %>% filter(RegulonID %in% St2_regulonID$Regulon_ID & State == "St_2")
+St2_mTF_program_act <- ProgAct_all %>% filter(Program_ID %in% St2_programID$Program & State == "St_2")
+
+st2_mTF_ProgAct_PatPrmean <- St2_mTF_program_act %>% group_by(orig.ident, Program_ID) %>% mutate(meanact = mean(Prog.Activity))
+st2_overAct_prID <- st2_mTF_ProgAct_PatPrmean %>% filter(meanact > 0.6) %>% dplyr::select(Program_ID) %>% distinct()
+st2_overAct <- st2_mTF_ProgAct_PatPrmean %>% filter(meanact > 0.6)
+st2_overAct_prID <- unique(st2_overAct_prID$Program_ID)
+
+# overactive programs:2 21 15 14 13 32 25  4  1
+st2_overAct$Program_ID <- as.factor(st2_overAct$Program_ID)
+ggplot(st2_overAct, aes(x=Program_ID, y=Prog.Activity, fill=State)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8)  +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+st2_overAct_PRonly <- st2_mTF_ProgAct_PatPrmean %>% filter(Program_ID %in% st2_overAct_prID)
+st2_overAct_PRonly$Program_ID <- as.factor(st2_overAct_PRonly$Program_ID)
+ggplot(st2_overAct_PRonly, aes(x=Program_ID, y=Prog.Activity, fill=State)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8)  +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+
+st2_underAct_prID <- st2_mTF_ProgAct_PatPrmean %>% filter(meanact < -0.6) %>% dplyr::select(Program_ID) %>% distinct()
+st2_underAct <- st2_mTF_ProgAct_PatPrmean %>% filter(meanact < -0.6) 
+st2_underAct_prID <- unique(st2_underAct_prID$Program_ID)
+
+# underactive programs: 5 8
+st2_underAct$Program_ID <- as.factor(st2_underAct$Program_ID)
+ggplot(st2_underAct, aes(x=Program_ID, y=Prog.Activity, fill=State)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8)  +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+st2_underAct_PRonly <- st2_mTF_ProgAct_PatPrmean %>% filter(Program_ID %in% c("5","8"))
+st2_underAct_PRonly$Program_ID <- as.factor(st2_underAct_PRonly$Program_ID)
+ggplot(st2_underAct_PRonly, aes(x=Program_ID, y=Prog.Activity, fill=State)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8)  +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+##St2 multiple mTF regulating programs
+```
+
+  Program n
+1        6 5
+2        2 3
+3       15 3
+4       18 3
+5       29 3
+
+```{r}
+
+
+masterTF_net_St2_only <- mTF_st2_net %>% filter(Source %in% mTF_st2_listy$TF)
+St2_prog_regulon_det <- miner_prog_reg_Det %>% filter(RegulonID %in% St2_regulonID$Regulon_ID & State == "St_2")
+st2_progReg_det2 <- St2_prog_regulon_det %>% dplyr::select(RegulonID,State,Program) %>% distinct()
+st2_progReg_det3 <- merge(st2_progReg_det2, regulon_det, by.x = "RegulonID", by.y = "Regulon_ID")
+st2_progReg_det5 <- merge(st2_progReg_det3, masterTF_net_St2_only, by.x = "Regulator_ID", by.y = "Source")
+st2_progReg_det6 <- st2_progReg_det5 %>% dplyr::select(RegulonID, State, Program, Regulator_ID, Target, Edge) %>% distinct()
+St2_mTF_RegMiner_netA <- st2_progReg_det6 %>% dplyr::select(Regulator_ID, Target, Edge)
+St2_mTF_RegMiner_netB <- st2_progReg_det6 %>% dplyr::select(Regulator_ID, Program)
+St2_mTF_RegMiner_netC <- st2_progReg_det6 %>% dplyr::select(Program, RegulonID)
+colnames(St2_mTF_RegMiner_netA) <- c("Regulator", "Target", "Edge")
+St2_mTF_RegMiner_netB$Edge <- c("Program")
+St2_mTF_RegMiner_netC$Edge <- c("Regulon")
+colnames(St2_mTF_RegMiner_netB) <- c("Regulator", "Target", "Edge")
+colnames(St2_mTF_RegMiner_netB) <- c("Regulator", "Target", "Edge")
+colnames(St2_mTF_RegMiner_netC) <- c("Regulator", "Target", "Edge")
+
+St2_mTF_RegMiner_netABC <- rbind(St2_mTF_RegMiner_netA,St2_mTF_RegMiner_netB)
+St2_mTF_RegMiner_netABC <- rbind(St2_mTF_RegMiner_netABC,St2_mTF_RegMiner_netC)
+St2_mTF_RegMiner_netABC2 <- St2_mTF_RegMiner_netABC %>% distinct()
+
+write.csv(St2_mTF_RegMiner_netABC2,"St2_masterTF_MinerNet_Ed.csv")
+
+
+```
+
+
+
+```{r}
+
+for(i in 1:length(st2_overAct_prID)){
+  
+pr_geneN <- st2_progReg_det6 %>% filter(Program == st2_overAct_prID[i]) %>% dplyr::select(Regulator_ID) %>% distinct()
+pr_geneN2 <- st2_progReg_det6 %>% filter(Program == st2_overAct_prID[i]) %>% dplyr::select(Target) %>% distinct()
+colnames(pr_geneN) <- c("Gene Names")
+colnames(pr_geneN2) <- c("Gene Names")
+pr_geneN3 <- rbind(pr_geneN, pr_geneN2)
+pr_geneN3_id <- bitr(pr_geneN3$`Gene Names`, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+  
+
+ego <- enrichGO(gene          = pr_geneN3_id$SYMBOL, keyType = "SYMBOL",
+                 OrgDb         = org.Hs.eg.db,
+                 ont           = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.01,
+                 qvalueCutoff  = 0.05,
+                 readable      = TRUE)
+GO_BP_pr <- as.data.frame(ego@result[1:5,])
+GO_BP_pr2 <- GO_BP_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+GO_BP_pr2$Pcount <- as.numeric(GO_BP_pr2$Pcount)
+GO_BP_pr2$Count <- as.numeric(GO_BP_pr2$Count)
+GO_BP_pr2$Program <- st2_overAct_prID[i]
+GO_BP_pr3 <- GO_BP_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pGO <- paste("GO_BP", st2_overAct_prID[i], "St2_UP.csv",sep = "_")
+write.csv(GO_BP_pr3,pGO)
+
+kk <- enrichKEGG(gene         = pr_geneN3_id$ENTREZID,
+                organism     = 'hsa',
+                pvalueCutoff = 0.05)
+Kegg_pr <- as.data.frame(kk@result[1:5,])
+
+Kegg_pr2 <- Kegg_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+Kegg_pr2$Pcount <- as.numeric(Kegg_pr2$Pcount)
+Kegg_pr2$Count <- as.numeric(Kegg_pr2$Count)
+Kegg_pr2$Program <- st2_overAct_prID[i]
+Kegg_pr3 <- Kegg_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pKEGG <- paste("KEGG_ora", st2_overAct_prID[i], "St2_UP.csv",sep = "_")
+write.csv(Kegg_pr3, pKEGG)
+
+RPA <- enrichPathway(gene= pr_geneN3_id$ENTREZID, pvalueCutoff = 0.05, readable=TRUE)
+#head(RPA)
+
+RPA_pr <- as.data.frame(RPA@result[1:5,])
+
+RPA_pr2 <- RPA_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+RPA_pr2$Pcount <- as.numeric(RPA_pr2$Pcount)
+RPA_pr2$Count <- as.numeric(RPA_pr2$Count)
+RPA_pr2$Program <- st2_overAct_prID[i]
+RPA_pr3 <- RPA_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pRPA <- paste("Reactome_ora", st2_overAct_prID[i], "St2_UP.csv",sep = "_")
+write.csv(RPA_pr3, pRPA)
+
+
+}
+
+
+
+
+```
+
+
+
+
+```{r}
+Kegg_pr_enrUP_at <- Kegg_pr3[1,]
+react_pr_enrUP_at <- RPA_pr3[1,]
+GObp_pr_enrUP_at <- GO_BP_pr3[1,]
+
+for(i in 1:length(st2_overAct_prID)){
+pGO <- paste("GO_BP", st2_overAct_prID[i], "St2_UP.csv",sep = "_")
+try(pGO_enr <- read.csv(pGO, header = T, row.names = 1))
+GObp_pr_enrUP_at <- rbind(GObp_pr_enrUP_at, pGO_enr)
+
+#GObp_pr_enrUP_dt <- GObp_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+pKEGG <- paste("KEGG_ora", st2_overAct_prID[i], "St2_UP.csv",sep = "_")
+try(pKEGG_enr <- read.csv(pKEGG, header = T, row.names = 1))
+Kegg_pr_enrUP_at <- rbind(Kegg_pr_enrUP_at, pKEGG_enr)
+#Kegg_pr_enrUP_dt <- Kegg_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+pRPA <- paste("Reactome_ora", st2_overAct_prID[i], "St2_UP.csv",sep = "_")
+try(pRPA_enr <- read.csv(pRPA, header = T, row.names = 1))
+react_pr_enrUP_at <- rbind(react_pr_enrUP_at, pRPA_enr)
+#react_pr_enrUP_dt <- react_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+
+
+}
+#pGO <- paste("GO_BP", st1_pr_under_lt[i], "DN.csv",sep = "_")
+#pKEGG <- paste("KEGG_ora", st1_pr_under_lt[i], "DN.csv",sep = "_")
+#pRPA <- paste("Reactome_ora", st1_pr_under_lt[i], "DN.csv",sep = "_")
+write.csv(Kegg_pr_enrUP_at, "KEGG_enr_UP_St2_path.csv")
+Kegg_pr_enrUP_dt <- Kegg_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program)%>% distinct() %>% pivot_wider(names_from = Program, values_from = geneRat)
+Kegg_pr_enrUP_dt <- as.data.frame(Kegg_pr_enrUP_dt)
+rownames(Kegg_pr_enrUP_dt) <- Kegg_pr_enrUP_dt$Description
+Kegg_pr_enrUP_dt[is.na(Kegg_pr_enrUP_dt)] <- 0
+Kegg_pr_enrUP_dt <- Kegg_pr_enrUP_dt[,-1]
+
+write.csv(react_pr_enrUP_at, "Reactome_enr_UP_St2_path.csv")
+#pheatmap(Rp_pt_st1_DN_dt2, cluster_rows = F, cluster_cols = F, na_col = c("grey"), angle_col = 45, fontsize = 16)
+react_pr_enrUP_dt <- react_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program)%>% distinct() %>% pivot_wider(names_from = Program, values_from = geneRat)
+react_pr_enrUP_dt2 <- as.data.frame(react_pr_enrUP_dt)
+rownames(react_pr_enrUP_dt2) <- react_pr_enrUP_dt$Description
+react_pr_enrUP_dt2[is.na(react_pr_enrUP_dt2)] <- 0
+react_pr_enrUP_dt2 <- react_pr_enrUP_dt2[,-1]
+
+write.csv(GObp_pr_enrUP_at, "GOBP_enr_UP_St2_path.csv")
+#pheatmap(Rp_pt_st1_DN_dt2, cluster_rows = F, cluster_cols = F, na_col = c("grey"), angle_col = 45, fontsize = 16)
+GObp_pr_enrUP_dt <- GObp_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% distinct() %>% pivot_wider(names_from = Program, values_from = geneRat)
+GObp_pr_enrUP_dt <- as.data.frame(GObp_pr_enrUP_dt)
+rownames(GObp_pr_enrUP_dt) <- GObp_pr_enrUP_dt$Description
+GObp_pr_enrUP_dt[is.na(GObp_pr_enrUP_dt)] <- 0
+GObp_pr_enrUP_dt <- GObp_pr_enrUP_dt[,-1]
+
+
+#pheatmap(Rp_pt_st1_DN_dt2, cluster_rows = F, cluster_cols = F, na_col = c("grey"), angle_col = 45, fontsize = 16)
+```
+
+
+```{r}
+
+for(i in 1:length(st2_underAct_prID2)){
+  
+pr_geneN <- st2_progReg_det6 %>% filter(Program == st2_underAct_prID2[i]) %>% dplyr::select(Regulator_ID) %>% distinct()
+pr_geneN2 <- st2_progReg_det6 %>% filter(Program == st2_underAct_prID2[i]) %>% dplyr::select(Target) %>% distinct()
+colnames(pr_geneN) <- c("Gene Names")
+colnames(pr_geneN2) <- c("Gene Names")
+pr_geneN3 <- rbind(pr_geneN, pr_geneN2)
+pr_geneN3_id <- bitr(pr_geneN3$`Gene Names`, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+  
+
+ego <- enrichGO(gene          = pr_geneN3_id$SYMBOL, keyType = "SYMBOL",
+                 OrgDb         = org.Hs.eg.db,
+                 ont           = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.01,
+                 qvalueCutoff  = 0.05,
+                 readable      = TRUE)
+GO_BP_pr <- as.data.frame(ego@result[1:5,])
+GO_BP_pr2 <- GO_BP_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+GO_BP_pr2$Pcount <- as.numeric(GO_BP_pr2$Pcount)
+GO_BP_pr2$Count <- as.numeric(GO_BP_pr2$Count)
+GO_BP_pr2$Program <- st2_underAct_prID2[i]
+GO_BP_pr3 <- GO_BP_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pGO <- paste("GO_BP", st2_underAct_prID2[i], "St2_DN2.csv",sep = "_")
+write.csv(GO_BP_pr3,pGO)
+
+kk <- enrichKEGG(gene         = pr_geneN3_id$ENTREZID,
+                organism     = 'hsa',
+                pvalueCutoff = 0.05)
+Kegg_pr <- as.data.frame(kk@result[1:5,])
+
+Kegg_pr2 <- Kegg_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+Kegg_pr2$Pcount <- as.numeric(Kegg_pr2$Pcount)
+Kegg_pr2$Count <- as.numeric(Kegg_pr2$Count)
+Kegg_pr2$Program <- st2_underAct_prID2[i]
+Kegg_pr3 <- Kegg_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pKEGG <- paste("KEGG_ora", st2_underAct_prID2[i], "St2_DN2.csv",sep = "_")
+write.csv(Kegg_pr3, pKEGG)
+
+RPA <- enrichPathway(gene= pr_geneN3_id$ENTREZID, pvalueCutoff = 0.05, readable=TRUE)
+#head(RPA)
+
+RPA_pr <- as.data.frame(RPA@result[1:5,])
+
+RPA_pr2 <- RPA_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+RPA_pr2$Pcount <- as.numeric(RPA_pr2$Pcount)
+RPA_pr2$Count <- as.numeric(RPA_pr2$Count)
+RPA_pr2$Program <- st2_underAct_prID2[i]
+RPA_pr3 <- RPA_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pRPA <- paste("Reactome_ora", st2_underAct_prID2[i], "St2_DN2.csv",sep = "_")
+write.csv(RPA_pr3, pRPA)
+
+
+}
+
+
+
+
+```
+
+
+
+```{r}
+
+Kegg_pr_enrDN_at <- Kegg_pr3[1,]
+react_pr_enrDN_at <- RPA_pr3[1,]
+GObp_pr_enrDN_at <- GO_BP_pr3[1,]
+
+for(i in 1:length(st2_underAct_prID)){
+pGO <- paste("GO_BP", st2_underAct_prID[i], "St2_DN.csv",sep = "_")
+try(pGO_enr <- read.csv(pGO, header = T, row.names = 1))
+GObp_pr_enrDN_at <- rbind(GObp_pr_enrDN_at, pGO_enr)
+
+#GObp_pr_enrUP_dt <- GObp_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+pKEGG <- paste("KEGG_ora", st2_underAct_prID[i], "St2_DN.csv",sep = "_")
+try(pKEGG_enr <- read.csv(pKEGG, header = T, row.names = 1))
+Kegg_pr_enrDN_at <- rbind(Kegg_pr_enrDN_at, pKEGG_enr)
+#Kegg_pr_enrUP_dt <- Kegg_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+pRPA <- paste("Reactome_ora", st2_underAct_prID[i], "St2_DN.csv",sep = "_")
+try(pRPA_enr <- read.csv(pRPA, header = T, row.names = 1))
+react_pr_enrDN_at <- rbind(react_pr_enrDN_at, pRPA_enr)
+#react_pr_enrUP_dt <- react_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+
+
+}
+#pGO <- paste("GO_BP", st1_pr_under_lt[i], "DN.csv",sep = "_")
+#pKEGG <- paste("KEGG_ora", st1_pr_under_lt[i], "DN.csv",sep = "_")
+#pRPA <- paste("Reactome_ora", st1_pr_under_lt[i], "DN.csv",sep = "_")
+write.csv(Kegg_pr_enrDN_at, "KEGG_enr_DN_St2_path.csv")
+Kegg_pr_enrDN_dt <- Kegg_pr_enrDN_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program)%>% distinct() %>% pivot_wider(names_from = Program, values_from = geneRat)
+Kegg_pr_enrDN_dt <- as.data.frame(Kegg_pr_enrDN_dt)
+rownames(Kegg_pr_enrDN_dt) <- Kegg_pr_enrDN_dt$Description
+Kegg_pr_enrDN_dt[is.na(Kegg_pr_enrDN_dt)] <- 0
+Kegg_pr_enrDN_dt <- Kegg_pr_enrDN_dt[,-1]
+
+write.csv(react_pr_enrDN_at, "Reactome_enr_DN_St2_path.csv")
+#pheatmap(Rp_pt_st1_DN_dt2, cluster_rows = F, cluster_cols = F, na_col = c("grey"), angle_col = 45, fontsize = 16)
+react_pr_enrDN_dt <- react_pr_enrDN_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program)%>% distinct() %>% pivot_wider(names_from = Program, values_from = geneRat)
+react_pr_enrDN_dt2 <- as.data.frame(react_pr_enrDN_dt)
+rownames(react_pr_enrDN_dt2) <- react_pr_enrDN_dt$Description
+react_pr_enrDN_dt2[is.na(react_pr_enrDN_dt2)] <- 0
+react_pr_enrDN_dt2 <- react_pr_enrDN_dt2[,-1]
+
+write.csv(GObp_pr_enrDN_at, "GOBP_enr_DN_St2_path.csv")
+#pheatmap(Rp_pt_st1_DN_dt2, cluster_rows = F, cluster_cols = F, na_col = c("grey"), angle_col = 45, fontsize = 16)
+GObp_pr_enrDN_dt <- GObp_pr_enrDN_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% distinct() %>% pivot_wider(names_from = Program, values_from = geneRat)
+GObp_pr_enrDN_dt <- as.data.frame(GObp_pr_enrDN_dt)
+rownames(GObp_pr_enrDN_dt) <- GObp_pr_enrDN_dt$Description
+GObp_pr_enrDN_dt[is.na(GObp_pr_enrDN_dt)] <- 0
+GObp_pr_enrDN_dt <- GObp_pr_enrDN_dt[,-1]
+
+
+```
+
+
+```{r}
+for(g in 1:length(mTF_st2_listy$TF)){
+st2_TF_TG <- St2_mTF_RegMiner_netA %>% filter(Regulator == mTF_st2_listy$TF[g]) %>% dplyr::select(Target) %>% distinct()
+
+#mTF_pr_ct<- st1_progReg_det3 %>% filter(Regulator_ID %in% st1_sox5_TG$Target) %>% dplyr::select(Program) %>% distinct() %>% count()
+  
+mTF_rg_ct <- regulon_det %>% filter(Regulator_ID %in% st2_TF_TG$Target) %>% dplyr::select(Regulon_ID) %>% distinct() %>% count()
+mTF_rg <- regulon_det %>% filter(Regulator_ID %in% st2_TF_TG$Target) %>% dplyr::select(Regulon_ID) %>% distinct()
+
+mTF_pr_ct <- miner_prog_reg_Det %>% filter(State== "St_2") %>% filter(RegulonID %in% mTF_rg$Regulon_ID) %>% dplyr::select(Program) %>% distinct() %>% count()
+
+mTF_rg_prCt <- cbind(mTF_st2_listy$TF[g],mTF_rg_ct$n, mTF_pr_ct$n)
+colnames(mTF_rg_prCt) <- c("mTF","Regulon No","Program No")
+mTF_st2_Det <- rbind(mTF_st2_Det,mTF_rg_prCt)
+}
+```
+
+
+
+## St_5
+
+```{r}
+
+mTF_st5_net <- read.csv("tf_tf_network_uw14R_st5.csv", header = T, row.names = 1)
+mTF_netB <- read.csv("TF_TF_network_UW14R_new.csv", header = T)
+St5_regulonID <- regulon_det %>% filter(Regulator_ID %in% mTF_st5_listy$TF) %>% dplyr::select(Regulon_ID)
+St5_programID <- miner_prog_reg_Det %>% filter(RegulonID %in% St5_regulonID$Regulon_ID & State == "St_5")
+
+masterTF_net_St5_only <- mTF_st5_net %>% filter(Source %in% mTF_st5_listy$TF)
+St5_prog_regulon_det <- miner_prog_reg_Det %>% filter(RegulonID %in% St5_regulonID$Regulon_ID & State == "St_5")
+st5_progReg_det2 <- St5_prog_regulon_det %>% dplyr::select(RegulonID,State,Program) %>% distinct()
+st5_progReg_det3 <- merge(st5_progReg_det2, regulon_det, by.x = "RegulonID", by.y = "Regulon_ID")
+st5_progReg_det5 <- merge(st5_progReg_det3, masterTF_net_St5_only, by.x = "Regulator_ID", by.y = "Source")
+st5_progReg_det6 <- st5_progReg_det5 %>% dplyr::select(RegulonID, State, Program, Regulator_ID, Target, Edge) %>% distinct()
+St5_mTF_RegMiner_netA <- st5_progReg_det6 %>% dplyr::select(Regulator_ID, Target, Edge)
+St5_mTF_RegMiner_netB <- st5_progReg_det6 %>% dplyr::select(Regulator_ID, Program)
+St5_mTF_RegMiner_netC <- st5_progReg_det6 %>% dplyr::select(Program, RegulonID)
+colnames(St5_mTF_RegMiner_netA) <- c("Regulator", "Target", "Edge")
+St5_mTF_RegMiner_netB$Edge <- c("Program")
+St5_mTF_RegMiner_netC$Edge <- c("Regulon")
+colnames(St5_mTF_RegMiner_netB) <- c("Regulator", "Target", "Edge")
+colnames(St5_mTF_RegMiner_netB) <- c("Regulator", "Target", "Edge")
+colnames(St5_mTF_RegMiner_netC) <- c("Regulator", "Target", "Edge")
+
+St5_mTF_RegMiner_netABC <- rbind(St5_mTF_RegMiner_netA, St5_mTF_RegMiner_netB)
+St5_mTF_RegMiner_netABC <- rbind(St5_mTF_RegMiner_netABC, St5_mTF_RegMiner_netC)
+St5_mTF_RegMiner_netABC2 <- St5_mTF_RegMiner_netABC %>% distinct()
+
+write.csv(St5_mTF_RegMiner_netABC2,"St5_masterTF_MinerNet_Ed.csv")
+
+```
+
+
+
+```{r}
+TF_TF_st5_net_comb <- mTF_st5_net %>% dplyr::select(Source, Target, Edge) %>% pivot_wider(names_from = Target, values_from = Edge)
+TF_TF_st5_net_comb <- as.data.frame(TF_TF_st5_net_comb)
+rownames(TF_TF_st5_net_comb) <- TF_TF_st5_net_comb$Source
+TF_TF_st5_net_comb2 <- TF_TF_st5_net_comb[,-1]
+
+pheatmap(TF_TF_st5_net_comb2, cluster_cols = F, cluster_rows = F, angle_col = 90, color = c("lightblue","darkred"), breaks = c(-0.25,0,0.25), fontsize = 14)
+
+#mTF_st2_listy <- mTF_netA %>% filter(State == "St_2") %>% dplyr::select(TF) %>% distinct()
+mTF_st5_net_comb_mTFO <- mTF_st5_net %>% dplyr::select(Source, Target, Edge)%>% filter(Source %in% mTF_st5_listy$TF) %>% pivot_wider(names_from = Target, values_from = Edge)
+mTF_st5_net_comb_mTFO <- as.data.frame(mTF_st5_net_comb_mTFO)
+rownames(mTF_st5_net_comb_mTFO) <- mTF_st5_net_comb_mTFO$Source
+mTF_st5_net_comb_mTFO2 <- mTF_st5_net_comb_mTFO[,-1]
+
+pheatmap(mTF_st5_net_comb_mTFO2, cluster_cols = F, cluster_rows = F, angle_col = 90, color = c("lightblue","darkred"), breaks = c(-0.25,0,0.25), fontsize = 18)
+
+
+mTF_st5_net_comb_mTFO_comR <- mTF_st5_net %>% dplyr::select(Source, Target, Edge)%>% filter(Source %in% mTF_st5_listy$TF) %>%filter(Target %in% c("ETV1","KLF12","RFX3","MAZ","LMO2","MEIS2","NFIB","PRRX1","CREB5","IKZF2","RFX7","ID4")) %>% pivot_wider(names_from = Target, values_from = Edge)
+
+
+
+```
+
+
+```{r}
+
+
+St5_mTF_regulon_act <- regulonAct_all %>% filter(RegulonID %in% St5_regulonID$Regulon_ID & State == "St_5")
+St5_mTF_program_act <- ProgAct_all %>% filter(Program_ID %in% St5_programID$Program & State == "St_5")
+st5_mTF_ProgAct_PatPrmean <- St5_mTF_program_act %>% group_by(orig.ident, Program_ID) %>% mutate(meanact = mean(Prog.Activity))
+st5_overAct_prID <- st5_mTF_ProgAct_PatPrmean %>% filter(meanact > 0.6) %>% dplyr::select(Program_ID) %>% distinct()
+st5_overAct <- st5_mTF_ProgAct_PatPrmean %>% filter(meanact > 0.6)
+st5_overAct_prID <- unique(st5_overAct_prID$Program_ID)
+
+# overactive programs:36
+st5_overAct$Program_ID <- as.factor(st5_overAct$Program_ID)
+ggplot(st5_overAct, aes(x=Program_ID, y=Prog.Activity, fill=State)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8)  +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+st5_underAct_prID <- st5_mTF_ProgAct_PatPrmean %>% filter(meanact < -0.6) %>% dplyr::select(Program_ID) %>% distinct()
+st5_underAct <- st5_mTF_ProgAct_PatPrmean %>% filter(meanact < -0.6) 
+st5_underAct_prID <- unique(st5_underAct_prID$Program_ID)
+
+# underactive programs: 13 10 33  1  5  2 30 27  7 32 29 23  8 14 21 31
+st5_underAct$Program_ID <- as.factor(st5_underAct$Program_ID)
+ggplot(st5_underAct, aes(x=Program_ID, y=Prog.Activity, fill=State)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8)  +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+
+## St5 mTF regulated programs
+
+
+```
+
+   Program n
+1       10 5
+2       29 5
+3        2 4
+4        6 3
+5       13 3
+6       14 3
+7       18 3
+8       25 3
+
+```{r}
+
+for(i in 1:length(st5_overAct_prID)){
+  
+pr_geneN <- st5_progReg_det6 %>% filter(Program == st5_overAct_prID[i]) %>% dplyr::select(Regulator_ID) %>% distinct()
+pr_geneN2 <- st5_progReg_det6 %>% filter(Program == st5_overAct_prID[i]) %>% dplyr::select(Target) %>% distinct()
+colnames(pr_geneN) <- c("Gene Names")
+colnames(pr_geneN2) <- c("Gene Names")
+pr_geneN3 <- rbind(pr_geneN, pr_geneN2)
+pr_geneN3_id <- bitr(pr_geneN3$`Gene Names`, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+  
+
+ego <- enrichGO(gene          = pr_geneN3_id$SYMBOL, keyType = "SYMBOL",
+                 OrgDb         = org.Hs.eg.db,
+                 ont           = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.01,
+                 qvalueCutoff  = 0.05,
+                 readable      = TRUE)
+GO_BP_pr <- as.data.frame(ego@result[1:5,])
+GO_BP_pr2 <- GO_BP_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+GO_BP_pr2$Pcount <- as.numeric(GO_BP_pr2$Pcount)
+GO_BP_pr2$Count <- as.numeric(GO_BP_pr2$Count)
+GO_BP_pr2$Program <- st5_overAct_prID[i]
+GO_BP_pr3 <- GO_BP_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pGO <- paste("GO_BP", st5_overAct_prID[i], "St5_UP.csv",sep = "_")
+write.csv(GO_BP_pr3,pGO)
+
+kk <- enrichKEGG(gene         = pr_geneN3_id$ENTREZID,
+                organism     = 'hsa',
+                pvalueCutoff = 0.05)
+Kegg_pr <- as.data.frame(kk@result[1:5,])
+
+Kegg_pr2 <- Kegg_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+Kegg_pr2$Pcount <- as.numeric(Kegg_pr2$Pcount)
+Kegg_pr2$Count <- as.numeric(Kegg_pr2$Count)
+Kegg_pr2$Program <- st5_overAct_prID[i]
+Kegg_pr3 <- Kegg_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pKEGG <- paste("KEGG_ora", st5_overAct_prID[i], "St5_UP.csv",sep = "_")
+write.csv(Kegg_pr3, pKEGG)
+
+RPA <- enrichPathway(gene= pr_geneN3_id$ENTREZID, pvalueCutoff = 0.05, readable=TRUE)
+#head(RPA)
+
+RPA_pr <- as.data.frame(RPA@result[1:5,])
+
+RPA_pr2 <- RPA_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+RPA_pr2$Pcount <- as.numeric(RPA_pr2$Pcount)
+RPA_pr2$Count <- as.numeric(RPA_pr2$Count)
+RPA_pr2$Program <- st5_overAct_prID[i]
+RPA_pr3 <- RPA_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pRPA <- paste("Reactome_ora", st5_overAct_prID[i], "St5_UP.csv",sep = "_")
+write.csv(RPA_pr3, pRPA)
+
+
+}
+
+
+
+```
+
+
+```{r}
+
+
+
+
+```
+
+
+
+```{r}
+
+
+for(i in 1:length(st5_underAct_prID)){
+  
+pr_geneN <- st5_progReg_det6 %>% filter(Program == st5_underAct_prID[i]) %>% dplyr::select(Regulator_ID) %>% distinct()
+pr_geneN2 <- st5_progReg_det6 %>% filter(Program == st5_underAct_prID[i]) %>% dplyr::select(Target) %>% distinct()
+colnames(pr_geneN) <- c("Gene Names")
+colnames(pr_geneN2) <- c("Gene Names")
+pr_geneN3 <- rbind(pr_geneN, pr_geneN2)
+pr_geneN3_id <- bitr(pr_geneN3$`Gene Names`, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+  
+
+ego <- enrichGO(gene          = pr_geneN3_id$SYMBOL, keyType = "SYMBOL",
+                 OrgDb         = org.Hs.eg.db,
+                 ont           = "BP",
+                 pAdjustMethod = "BH",
+                 pvalueCutoff  = 0.01,
+                 qvalueCutoff  = 0.05,
+                 readable      = TRUE)
+GO_BP_pr <- as.data.frame(ego@result[1:5,])
+GO_BP_pr2 <- GO_BP_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+GO_BP_pr2$Pcount <- as.numeric(GO_BP_pr2$Pcount)
+GO_BP_pr2$Count <- as.numeric(GO_BP_pr2$Count)
+GO_BP_pr2$Program <- st5_underAct_prID[i]
+GO_BP_pr3 <- GO_BP_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pGO <- paste("GO_BP", st5_underAct_prID[i], "St5_DN.csv",sep = "_")
+write.csv(GO_BP_pr3,pGO)
+
+kk <- enrichKEGG(gene         = pr_geneN3_id$ENTREZID,
+                organism     = 'hsa',
+                pvalueCutoff = 0.05)
+Kegg_pr <- as.data.frame(kk@result[1:5,])
+
+Kegg_pr2 <- Kegg_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+Kegg_pr2$Pcount <- as.numeric(Kegg_pr2$Pcount)
+Kegg_pr2$Count <- as.numeric(Kegg_pr2$Count)
+Kegg_pr2$Program <- st5_underAct_prID[i]
+Kegg_pr3 <- Kegg_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pKEGG <- paste("KEGG_ora", st5_underAct_prID[i], "St5_DN.csv",sep = "_")
+write.csv(Kegg_pr3, pKEGG)
+
+RPA <- enrichPathway(gene= pr_geneN3_id$ENTREZID, pvalueCutoff = 0.05, readable=TRUE)
+#head(RPA)
+
+RPA_pr <- as.data.frame(RPA@result[1:5,])
+
+RPA_pr2 <- RPA_pr %>% dplyr::select(Description, GeneRatio, Count, p.adjust) %>% separate(GeneRatio, sep = "/", into = c("Gcount","Pcount"))
+RPA_pr2$Pcount <- as.numeric(RPA_pr2$Pcount)
+RPA_pr2$Count <- as.numeric(RPA_pr2$Count)
+RPA_pr2$Program <- st5_underAct_prID[i]
+RPA_pr3 <- RPA_pr2 %>% mutate(geneRat = Count/Pcount) %>% dplyr::select(Description, p.adjust, geneRat, Program)
+pRPA <- paste("Reactome_ora", st5_underAct_prID[i], "St5_DN.csv",sep = "_")
+write.csv(RPA_pr3, pRPA)
+
+
+}
+
+
+```
+
+
+```{r}
+
+Kegg_pr_enrDN_at <- Kegg_pr3[1,]
+react_pr_enrDN_at <- RPA_pr3[1,]
+GObp_pr_enrDN_at <- GO_BP_pr3[1,]
+
+for(i in 1:length(st5_underAct_prID)){
+pGO <- paste("GO_BP", st5_underAct_prID[i], "St5_DN.csv",sep = "_")
+try(pGO_enr <- read.csv(pGO, header = T, row.names = 1))
+GObp_pr_enrDN_at <- rbind(GObp_pr_enrDN_at, pGO_enr)
+
+#GObp_pr_enrUP_dt <- GObp_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+pKEGG <- paste("KEGG_ora", st5_underAct_prID[i], "St5_DN.csv",sep = "_")
+try(pKEGG_enr <- read.csv(pKEGG, header = T, row.names = 1))
+Kegg_pr_enrDN_at <- rbind(Kegg_pr_enrDN_at, pKEGG_enr)
+#Kegg_pr_enrUP_dt <- Kegg_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+pRPA <- paste("Reactome_ora", st5_underAct_prID[i], "St5_DN.csv",sep = "_")
+try(pRPA_enr <- read.csv(pRPA, header = T, row.names = 1))
+react_pr_enrDN_at <- rbind(react_pr_enrDN_at, pRPA_enr)
+#react_pr_enrUP_dt <- react_pr_enrUP_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% pivot_wider(names_from = Program, values_from = geneRat)
+
+
+
+}
+#pGO <- paste("GO_BP", st1_pr_under_lt[i], "DN.csv",sep = "_")
+#pKEGG <- paste("KEGG_ora", st1_pr_under_lt[i], "DN.csv",sep = "_")
+#pRPA <- paste("Reactome_ora", st1_pr_under_lt[i], "DN.csv",sep = "_")
+write.csv(Kegg_pr_enrDN_at, "KEGG_enr_DN_St5_path.csv")
+Kegg_pr_enrDN_dt <- Kegg_pr_enrDN_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program)%>% distinct() %>% pivot_wider(names_from = Program, values_from = geneRat)
+Kegg_pr_enrDN_dt <- as.data.frame(Kegg_pr_enrDN_dt)
+rownames(Kegg_pr_enrDN_dt) <- Kegg_pr_enrDN_dt$Description
+Kegg_pr_enrDN_dt[is.na(Kegg_pr_enrDN_dt)] <- 0
+Kegg_pr_enrDN_dt <- Kegg_pr_enrDN_dt[,-1]
+
+write.csv(react_pr_enrDN_at, "Reactome_enr_DN_St5_path.csv")
+#pheatmap(Rp_pt_st1_DN_dt2, cluster_rows = F, cluster_cols = F, na_col = c("grey"), angle_col = 45, fontsize = 16)
+react_pr_enrDN_dt <- react_pr_enrDN_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program)%>% distinct() %>% pivot_wider(names_from = Program, values_from = geneRat)
+react_pr_enrDN_dt2 <- as.data.frame(react_pr_enrDN_dt)
+rownames(react_pr_enrDN_dt2) <- react_pr_enrDN_dt$Description
+react_pr_enrDN_dt2[is.na(react_pr_enrDN_dt2)] <- 0
+react_pr_enrDN_dt2 <- react_pr_enrDN_dt2[,-1]
+
+write.csv(GObp_pr_enrDN_at, "GOBP_enr_DN_St5_path.csv")
+#pheatmap(Rp_pt_st1_DN_dt2, cluster_rows = F, cluster_cols = F, na_col = c("grey"), angle_col = 45, fontsize = 16)
+GObp_pr_enrDN_dt <- GObp_pr_enrDN_at %>% filter(geneRat >= 0.2 & p.adjust < 0.05) %>% dplyr::select(Description, geneRat, Program) %>% distinct() %>% pivot_wider(names_from = Program, values_from = geneRat)
+GObp_pr_enrDN_dt <- as.data.frame(GObp_pr_enrDN_dt)
+rownames(GObp_pr_enrDN_dt) <- GObp_pr_enrDN_dt$Description
+GObp_pr_enrDN_dt[is.na(GObp_pr_enrDN_dt)] <- 0
+GObp_pr_enrDN_dt <- GObp_pr_enrDN_dt[,-1]
+
+
+```
+
+
+
+```{r}
+#St6_regulonID <- regulon_det %>% filter(Regulator_ID %in% mTF_st6_listy$TF) %>% dplyr::select(Regulon_ID)
+St6_programID <- miner_prog_reg_Det %>% filter(State == "St_6")
+#St6_mTF_regulon_act <- regulonAct_all %>% filter(RegulonID %in% St6_regulonID$Regulon_ID & State == "St_6")
+St6_mTF_program_act <- ProgAct_all %>% filter(Program_ID %in% St6_programID$Program & State == "St_6")
+
+st6_mTF_ProgAct_PatPrmean2 <- St6_mTF_program_act %>% group_by(Program_ID) %>% mutate(meanact = mean(Prog.Activity))
+st6_mTF_ProgAct_PatPrmedian <- St6_mTF_program_act %>% group_by(Program_ID) %>% mutate(medact = median(Prog.Activity))
+
+st6_mTF_ProgAct_PatPrmean2 %>% filter(meanact > 0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 26, 5, 35, 34
+st6_mTF_ProgAct_PatPrmedian %>% filter(medact > 0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 26, 5, 35, 17, 34
+#St6_mTF_program_act <- ProgAct_all %>% filter(Program_ID %in% St6_programID$Program & State == "St_6")
+
+st6_med_overAct <- st6_mTF_ProgAct_PatPrmedian %>% filter(Program_ID %in% c(26, 5, 35, 34))
+st6_med_overAct$Program_ID <- as.factor(st6_med_overAct$Program_ID)
+#ggplot(st6_med_overAct, aes(x=Program_ID, y=Prog.Activity)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8) +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+
+st6_mTF_ProgAct_PatPrmedian %>% filter(medact < -0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 14, 1, 3, 31, 10, 20, 30, 13, 27, 2, 28, 32, 29
+st6_mTF_ProgAct_PatPrmean2  %>% filter(meanact < -0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 14, 1, 10, 30, 13, 27, 2, 28, 32, 29
+
+st6_med_underAct <- st6_mTF_ProgAct_PatPrmedian %>% filter(Program_ID %in% c(14,1,10,30,13,27,2,28,32,29))
+st6_med_underAct$Program_ID <- as.factor(st6_med_underAct$Program_ID)
+#ggplot(st6_med_underAct, aes(x=Program_ID, y=Prog.Activity)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8) +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+```
+
+
+##Revised analysis with median program activity instead of mean
+
+```{r}
+
+st1_mTF_ProgAct_PatPrmean2 <- st1_mTF_ProgAct %>% group_by(Program_ID) %>% mutate(meanact = mean(Prog.Activity))
+st1_mTF_ProgAct_PatPrmedian <- st1_mTF_ProgAct %>% group_by(Program_ID) %>% mutate(medact = median(Prog.Activity))
+
+st1_mTF_ProgAct_PatPrmean2 %>% filter(meanact > 0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 1, 2, 4, 15, 33
+st1_mTF_ProgAct_PatPrmedian %>% filter(medact > 0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 1, 2, 15, 33
+st1_med_overAct <- st1_mTF_ProgAct_PatPrmedian %>% filter(Program_ID %in% c(1,2,15,33))
+#ggplot(st1_med_overAct, aes(x=Program_ID, y=Prog.Activity)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8) +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+
+st1_mTF_ProgAct_PatPrmedian %>% filter(medact < -0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 6, 26, 35, 32, 29, 5, 19, 31
+st1_mTF_ProgAct_PatPrmean2  %>% filter(meanact < -0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 6, 26, 35, 32, 29, 5, 19, 31
+st1_med_underAct <- st1_mTF_ProgAct_PatPrmedian %>% filter(Program_ID %in% c(6,26,35,32,29,5,19,31))
+st1_med_underAct$Program_ID <- as.factor(st1_med_underAct$Program_ID)
+#ggplot(st1_med_underAct, aes(x=Program_ID, y=Prog.Activity)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8) +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+##outlier cell states in some patients
+
+
+
+st2_mTF_ProgAct_PatPrmean2 <- St2_mTF_program_act %>% group_by(Program_ID) %>% mutate(meanact = mean(Prog.Activity))
+st2_mTF_ProgAct_PatPrmedian <- St2_mTF_program_act %>% group_by(Program_ID) %>% mutate(medact = median(Prog.Activity))
+
+
+st2_mTF_ProgAct_PatPrmean2 %>% filter(meanact > 0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 23, 28, 30, 2, 10, 15, 1, 4, 25, 18, 27, 32, 13
+st2_mTF_ProgAct_PatPrmedian %>% filter(medact > 0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 23, 28, 30, 2, 10, 15, 1, 4, 18, 27, 32, 13
+
+st2_med_overAct <- st2_mTF_ProgAct_PatPrmedian %>% filter(Program_ID %in% c(23, 28, 30, 2, 10, 15, 1, 4, 18, 27, 32, 13))
+st2_med_overAct$Program <- as.factor(st2_med_overAct$Program)
+#ggplot(st2_med_overAct, aes(x=Program_ID, y=Prog.Activity)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8) +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+st2_mTF_ProgAct_PatPrmedian %>% filter(medact < -0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 5
+st2_mTF_ProgAct_PatPrmean2 %>% filter(meanact < -0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 5
+st2_med_underAct <- st2_mTF_ProgAct_PatPrmedian %>% filter(Program_ID %in% c(5))
+st2_med_underAct$Program_ID <- as.factor(st2_med_underAct$Program_ID)
+#ggplot(st2_med_underAct, aes(x=Program_ID, y=Prog.Activity)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8) +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+st5_mTF_ProgAct_PatPrmean2 <- St5_mTF_program_act %>% group_by(Program_ID) %>% mutate(meanact = mean(Prog.Activity))
+st5_mTF_ProgAct_PatPrmedian <- St5_mTF_program_act %>% group_by(Program_ID) %>% mutate(medact = median(Prog.Activity))
+
+
+st5_mTF_ProgAct_PatPrmean2 %>% filter(meanact > 0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 36
+st5_mTF_ProgAct_PatPrmedian %>% filter(medact > 0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 36
+
+st5_med_overAct <- st5_mTF_ProgAct_PatPrmedian %>% filter(Program_ID %in% c(36))
+st5_med_overAct$Program <- as.factor(st5_med_overAct$Program)
+#ggplot(st5_med_overAct, aes(x=Program_ID, y=Prog.Activity)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8) +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+st5_mTF_ProgAct_PatPrmedian %>% filter(medact < -0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 8 14 13 10 31 23 21 33  1 35  5 28  2  6 22 30 27 12  4 18 15  7 32 29 25
+st5_mTF_ProgAct_PatPrmean2 %>% filter(meanact < -0.2 ) %>% dplyr::select(Program_ID) %>% distinct()
+# 8 14 13 10 31 23 21 33  1 35  5 28  2  6 22 30 27 12  4 18 15  7 32 29 25
+st5_med_underAct <- st5_mTF_ProgAct_PatPrmedian %>% filter(Program_ID %in% c(8, 14, 13, 10, 31, 23, 21, 33, 1, 35,  5, 28,  2,  6, 22, 30, 27, 12,  4, 18, 15,  7, 32, 29, 25))
+st5_med_underAct$Program_ID <- as.factor(st5_med_underAct$Program_ID)
+#ggplot(st5_med_underAct, aes(x=Program_ID, y=Prog.Activity)) +  geom_boxplot(notch=TRUE, notchwidth = 0.8) +  geom_hline(yintercept=0, linetype="dashed", color = "red") + theme_classic() + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 20)) + xlab("Program ID") + ylab("Program activity")
+
+
+
+```
+
+
+
+```{r}
+
+#mTF_st5_listy$TF
+#mTF_st2_listy$TF
+#mTF_st1_listy$TF
+
+for(j in 1:length(mTF_st1_listy$TF)){
+  pr_cnt <- st1_progReg_det6 %>% filter(Regulator_ID == mTF_st1_listy$TF[j]) %>% dplyr::select(Program) %>% distinct() %>% count()
+  reg_cnt <- st1_progReg_det6 %>% filter(Regulator_ID == mTF_st1_listy$TF[j]) %>% dplyr::select(RegulonID) %>% distinct() %>% count()
+  
+  st1_tab <- cbind(mTF_st1_listy$TF[j], pr_cnt$n, reg_cnt$n)
+  st1_tab2 <- rbind(st1_tab2, st1_tab)
+}
+colnames(st1_tab2) <- c("Regulator","Program count","Regulon count")
+
+```
+
+
+```{r}
+
+for(j in 1:length(mTF_st2_listy$TF)){
+  pr_cnt <- st2_progReg_det6 %>% filter(Regulator_ID == mTF_st2_listy$TF[j]) %>% dplyr::select(Program) %>% distinct() %>% count()
+  reg_cnt <- st2_progReg_det6 %>% filter(Regulator_ID == mTF_st2_listy$TF[j]) %>% dplyr::select(RegulonID) %>% distinct() %>% count()
+  st2_tab <- cbind(mTF_st2_listy$TF[j], pr_cnt$n, reg_cnt$n)
+  st2_tab2 <- rbind(st2_tab2, st2_tab)
+}
+colnames(st2_tab2) <- c("Regulator","Program count","Regulon count")
+
+
+```
+
+
+```{r}
+
+for(j in 1:length(mTF_st5_listy$TF)){
+  pr_cnt <- st5_progReg_det6 %>% filter(Regulator_ID == mTF_st5_listy$TF[j]) %>% dplyr::select(Program) %>% distinct() %>% count()
+  reg_cnt <- st5_progReg_det6 %>% filter(Regulator_ID == mTF_st5_listy$TF[j]) %>% dplyr::select(RegulonID) %>% distinct() %>% count()
+  st5_tab <- cbind(mTF_st5_listy$TF[j], pr_cnt$n, reg_cnt$n)
+  st5_tab2 <- rbind(st5_tab2, st5_tab)
+}
+colnames(st5_tab2) <- c("Regulator","Program count","Regulon count")
+
+
+```
+
+
+```{r}
+
+for(g in 1:length(mTF_st5_listy$TF)){
+st5_TF_TG <- St5_mTF_RegMiner_netA %>% filter(Regulator == mTF_st5_listy$TF[g]) %>% dplyr::select(Target) %>% distinct()
+
+#mTF_pr_ct<- st1_progReg_det3 %>% filter(Regulator_ID %in% st1_sox5_TG$Target) %>% dplyr::select(Program) %>% distinct() %>% count()
+  
+mTF_rg_ct <- regulon_det %>% filter(Regulator_ID %in% st5_TF_TG$Target) %>% dplyr::select(Regulon_ID) %>% distinct() %>% count()
+mTF_rg <- regulon_det %>% filter(Regulator_ID %in% st5_TF_TG$Target) %>% dplyr::select(Regulon_ID) %>% distinct()
+
+mTF_pr_ct <- miner_prog_reg_Det %>% filter(State== "St_5") %>% filter(RegulonID %in% mTF_rg$Regulon_ID) %>% dplyr::select(Program) %>% distinct() %>% count()
+
+mTF_rg_prCt <- cbind(mTF_st5_listy$TF[g],mTF_rg_ct$n, mTF_pr_ct$n)
+colnames(mTF_rg_prCt) <- c("mTF","Regulon No","Program No")
+mTF_st5_Det <- rbind(mTF_st5_Det,mTF_rg_prCt)
+}
+
+```
+
+
+```{r}
+
+s2Info <- st2_progReg_det6 %>% dplyr::select(State, Program, Regulator_ID) %>% distinct(.keep_all = T)
+st2Info2 <- merge(s2Info, st2_medAct_tg, by.x = "Program", by.y = "Program_ID")
+st2Info2 <- merge(st2Info2, st2_funksAl, by.x = "Program", by.y = "Program")
+write.csv(st2Info2,"St2_programInfoActFunc.csv")
+```
+
+
+```{r}
+st2_func_gr <- react_go_kegg_st2_up_fil%>% filter(Program %in% c(23, 28, 30, 2, 10, 15, 1, 4, 18, 27, 32, 13)) %>% group_by(Program) %>% mutate(PmGR = max(geneRat))
+selC2 <- st2_func_gr %>% dplyr::select(Program, PmGR) %>% distinct(Program, .keep_all = T)
+st2_func_sel <- cp_st2
+for(i in 1:dim(selC2)[1]){ cp_st2 <-st2_func_gr %>% filter(Program == selC2$Program[i] & geneRat == selC2$PmGR[i]); st2_func_sel <- rbind(st2_func_sel, cp_st2)}
+head(st2_func_sel)
+```
+
