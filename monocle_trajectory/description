@@ -1,4 +1,4 @@
 UW14 primary and relapse integrated data was used for trajectory analysis with monocle.
 https://github.com/ishita-ISB/UW_duke_analysis/blob/main/monocle_trajectory/Monocle_run_10Oct23.Rmd
 Driver genes considering MINER regulons were also identified and additional plots for exploration were prepared. 
-
+https://github.com/ishita-ISB/UW_duke_analysis/blob/main/monocle_trajectory/masterTF_regulon.Rmd
