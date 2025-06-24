@@ -1,1 +1,5 @@
-Integrated data was obtained with seurat analysis and sdcaled counts data was utilized for miner network modeling.
+Integrated data was obtained with seurat analysis and scaled counts data was utilized for miner network modeling.
+
+Steps for MINER analysis from single cell data can be obtained from https://github.com/baliga-lab/miner3
+
+MINER network model files can then be processed downstream using the R notebook
